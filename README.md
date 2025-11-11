@@ -1,6 +1,6 @@
 # ⚡ TurboZaps
 
-**TurboZaps** es una plataforma descentralizada de compraventa pensada para el comercio informal en El Salvador.  
+**TurboZaps** es una plataforma descentralizada de compraventa pensada para el comercio informal en El Salvador.
 Permite publicar anuncios, comprar productos y realizar pagos seguros a través de **Lightning Network (LNbits)** con un **sistema de escrow** que protege a comprador y vendedor.
 
 ---
@@ -119,78 +119,3 @@ Proyecto creado en 1 día para hackatón Lightning / Nostr / Web3.
 ## 📜 Licencia
 
 MIT License © 2025 TurboZaps
-
----
-
-## 🧱 `RULES.md`
-
-```markdown
-# ⚙️ Reglas del Proyecto — TurboZaps
-
-## 🧭 Propósito
-Construir un MVP funcional en 24 horas que demuestre cómo **Lightning Network** puede habilitar **pagos con escrow confiables** para el comercio informal en El Salvador.
-
----
-
-## 🚧 Estructura de trabajo
-
-- **Frontend (v0):**
-  - Diseño rápido de UI/UX.
-  - Componentes base y vistas (`Landing`, `Marketplace`, `Dashboard`).
-  - Integración mínima con backend mock.
-
-- **Backend (Cursor):**
-  - API en Go o TypeScript (según setup del equipo).
-  - Endpoints principales:
-    - `POST /orders` → crear escrow.
-    - `POST /release` → liberar fondos.
-    - `POST /cancel` → cancelar transacción.
-    - `GET /escrows` → listar transacciones activas.
-
----
-
-## 🧑‍💻 Roles
-
-| Rol | Responsabilidades |
-|------|--------------------|
-| **Frontend Lead** | UI, componentes, integración con API. |
-| **Backend Lead** | Lambda o API para LNbits + NostrMarket. |
-| **Product Owner** | Visión, UX y demo final. |
-
----
-
-## 🔄 Flujo de commits
-
-1. Crear rama con prefijo del módulo:
-   ```
-   feat/ui-dashboard
-   fix/lnbits-integration
-   ```
-
-2. PRs pequeños y revisados antes del merge.
-3. Cada PR debe incluir cambios en código y, si aplica, en README.
-
----
-
-## 🧪 Buenas prácticas
-
-- Usa **nombres claros** para commits.
-- Mantén el código **tipado y comentado**.
-- Simula datos locales cuando el backend no esté listo.
-- **No hardcodees keys** — usa `.env.local`.
-
----
-
-## 🧠 Guía rápida de desarrollo
-
-1. Genera componentes visuales en **v0.dev**.
-2. Desarrolla el backend en **Cursor**.
-3. Conecta ambos usando fetch/axios.
-4. Testea con LNbits local o legend.lnbits.com.
-5. Demuestra el flujo completo (landing → marketplace → pago → escrow → liberación).
-
----
-
-## ⚡ Objetivo final del hackatón
-Lograr una **demo en vivo funcional** con al menos un flujo:
-> “Publicar producto → Pagar con Lightning → Chat → Liberar escrow”.
