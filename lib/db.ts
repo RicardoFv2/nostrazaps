@@ -129,13 +129,20 @@ export const dbHelpers = {
   getOrdersByBuyer: (buyerPubkey: string, limit = 100, offset = 0) => {
     const db = getDb();
     return db
-      .prepare('SELECT * FROM orders WHERE buyer_pubkey = ? LIMIT ? OFFSET ?')
+      .prepare('SELECT * FROM orders WHERE buyer_pubkey = ? ORDER BY created_at DESC LIMIT ? OFFSET ?')
       .all(buyerPubkey, limit, offset);
   },
 
   getOrdersByStatus: (status: string, limit = 100, offset = 0) => {
     const db = getDb();
-    return db.prepare('SELECT * FROM orders WHERE status = ? LIMIT ? OFFSET ?').all(status, limit, offset);
+    return db.prepare('SELECT * FROM orders WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(status, limit, offset);
+  },
+
+  getOrdersByBuyerAndStatus: (buyerPubkey: string, status: string, limit = 100, offset = 0) => {
+    const db = getDb();
+    return db
+      .prepare('SELECT * FROM orders WHERE buyer_pubkey = ? AND status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?')
+      .all(buyerPubkey, status, limit, offset);
   },
 
   getAllOrders: (limit = 100, offset = 0) => {
@@ -178,6 +185,17 @@ export const dbHelpers = {
     return db
       .prepare('UPDATE orders SET payment_hash = ?, payment_request = ?, status = ? WHERE id = ?')
       .run(paymentHash, paymentRequest, 'paid', id);
+  },
+
+  updateOrderStatusAndPayment: (id: string, status: string, paymentHash?: string | null, paymentRequest?: string | null) => {
+    const db = getDb();
+    if (paymentHash && paymentRequest) {
+      return db
+        .prepare('UPDATE orders SET status = ?, payment_hash = ?, payment_request = ? WHERE id = ?')
+        .run(status, paymentHash, paymentRequest, id);
+    } else {
+      return db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
+    }
   },
 
   // Messages
