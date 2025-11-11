@@ -85,7 +85,7 @@ const runTest = async (
   try {
     const result = await Promise.race([
       testFn(),
-      new Promise<{ ok: boolean; error: string }>((_, reject) =>
+      new Promise<{ ok: boolean; error: string; data?: undefined }>((_, reject) =>
         setTimeout(() => reject(new Error('Test timeout')), TEST_TIMEOUT)
       ),
     ]);
@@ -97,7 +97,7 @@ const runTest = async (
       name,
       success,
       error: result.error,
-      data: result.data,
+      data: 'data' in result ? result.data : undefined,
       duration,
     });
 
@@ -430,4 +430,3 @@ runAllTests().catch((error) => {
   console.error('\n❌ Fatal error running tests:', error);
   process.exit(1);
 });
-
