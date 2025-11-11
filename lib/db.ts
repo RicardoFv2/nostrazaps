@@ -206,6 +206,20 @@ export const dbHelpers = {
       .all(orderId, limit, offset);
   },
 
+  getMessagesByOrderIdAndSender: (orderId: string, sender: string, limit = 100, offset = 0) => {
+    const db = getDb();
+    return db
+      .prepare('SELECT * FROM messages WHERE order_id = ? AND sender = ? ORDER BY timestamp ASC LIMIT ? OFFSET ?')
+      .all(orderId, sender, limit, offset);
+  },
+
+  getMessagesByOrderIdAndReceiver: (orderId: string, receiver: string, limit = 100, offset = 0) => {
+    const db = getDb();
+    return db
+      .prepare('SELECT * FROM messages WHERE order_id = ? AND receiver = ? ORDER BY timestamp ASC LIMIT ? OFFSET ?')
+      .all(orderId, receiver, limit, offset);
+  },
+
   createMessage: (message: {
     id: string;
     order_id: string;
