@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import Link from "next/link"
 import Navbar from "@/components/navbar"
 import ProductDetail from "@/components/product-detail"
@@ -15,7 +15,8 @@ interface Product {
   category: string
 }
 
-export default function ProductPage({ params }: { params: { id: string } }) {
+export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -56,9 +57,9 @@ export default function ProductPage({ params }: { params: { id: string } }) {
       },
     }
 
-    setProduct(mockProducts[params.id] || null)
+    setProduct(mockProducts[id] || null)
     setLoading(false)
-  }, [params.id])
+  }, [id])
 
   if (loading) {
     return (
