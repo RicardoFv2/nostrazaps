@@ -1,5 +1,5 @@
 // TurboZaps Orders API - Release Escrow
-// Sprint 3 - Release escrow funds to seller with validation
+// Sprint 3 - Release escrow funds to seller with TRUE ESCROW
 
 import { NextRequest, NextResponse } from 'next/server';
 import { dbHelpers } from '@/lib/db';
@@ -7,6 +7,7 @@ import { releaseEscrow } from '@/lib/lnbits';
 import type { Order } from '@/types';
 
 // POST /api/orders/[id]/release - Release escrow funds to seller
+// REAL ESCROW: Sends Lightning payment from system wallet to seller
 export const POST = async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> | { id: string } }
@@ -15,13 +16,19 @@ export const POST = async (
     const resolvedParams = await Promise.resolve(params);
     const orderId = resolvedParams.id;
 
-    // Optional: Get seller_pubkey from request body for ownership validation
-    // In a full implementation, this would come from authentication/session
-    let requestBody: { seller_pubkey?: string; message?: string } | null = null;
+    // Get seller_payment_request (Lightning invoice) from request body
+    // This is where the seller wants to receive the funds
+    let requestBody: { seller_payment_request?: string; message?: string } | null = null;
     try {
-      requestBody = await request.json().catch(() => null);
+      requestBody = await request.json();
     } catch {
-      // Request body is optional
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Request body is required with seller_payment_request (Lightning invoice)',
+        },
+        { status: 400 }
+      );
     }
 
     if (!orderId) {
@@ -34,7 +41,17 @@ export const POST = async (
       );
     }
 
-    console.log(`[POST /api/orders/${orderId}/release] Releasing escrow`);
+    if (!requestBody?.seller_payment_request) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'seller_payment_request (Lightning invoice) is required to release funds',
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[POST /api/orders/${orderId}/release] Releasing escrow with TRUE PAYMENT`);
 
     // Get order from database
     const order = dbHelpers.getOrderById(orderId) as Order | undefined;
@@ -49,12 +66,6 @@ export const POST = async (
         { status: 404 }
       );
     }
-
-    // Get product to verify seller (if stall_id is available, we could validate seller_pubkey)
-    const product = dbHelpers.getProductById(order.product_id);
-    // Note: In a full implementation, we would validate that the seller_pubkey
-    // from the request matches the product's stall owner or seller
-    // For now, we'll proceed with the release if the order is in the correct state
 
     // Validate order status
     if (order.status !== 'paid') {
@@ -71,52 +82,67 @@ export const POST = async (
       );
     }
 
-    // Release escrow in LNbits
-    let lnbitsReleaseSuccess = false;
-    try {
-      console.log(`[POST /api/orders/${orderId}/release] Releasing escrow in LNbits...`);
-      const releaseMessage = requestBody?.message || 'Escrow released to seller';
-      await releaseEscrow(orderId, releaseMessage);
-      lnbitsReleaseSuccess = true;
-      console.log(`[POST /api/orders/${orderId}/release] Escrow released successfully in LNbits`);
-    } catch (lnbitsError) {
-      console.error(`[POST /api/orders/${orderId}/release] Error releasing escrow in LNbits:`, lnbitsError);
-      
-      // Check if it's a critical error that should prevent database update
-      if (lnbitsError instanceof Error) {
-        // For 404, the order might not exist in LNbits (created locally)
-        // For 403, we might not have permission (but this is critical)
-        if (lnbitsError.message.includes('403') || lnbitsError.message.includes('forbidden')) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error: 'Permission denied. Unable to release escrow in LNbits.',
-              details: lnbitsError.message,
-            },
-            { status: 403 }
-          );
-        }
-        
-        // For other errors (404, network errors, etc.), we can still update the database
-        // This allows the system to work even if LNbits is temporarily unavailable
-        console.warn(
-          `[POST /api/orders/${orderId}/release] LNbits error (non-fatal), updating database status`
-        );
-      }
+    // Check if escrow is still held
+    if (order.escrow_held === false || order.escrow_held === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Escrow has already been released or refunded',
+        },
+        { status: 400 }
+      );
     }
 
-    // Update order status in database
-    dbHelpers.updateOrderStatus(orderId, 'released');
+    // Validate we have the amount
+    if (!order.total_sats || order.total_sats <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Order amount is invalid or missing',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Release escrow by sending Lightning payment to seller
+    let paymentResult;
+    try {
+      console.log(`[POST /api/orders/${orderId}/release] Sending ${order.total_sats} sats to seller...`);
+      
+      paymentResult = await releaseEscrow(
+        requestBody.seller_payment_request,
+        order.total_sats,
+        orderId
+      );
+      
+      console.log(`[POST /api/orders/${orderId}/release] Payment sent successfully!`);
+      console.log(`[POST /api/orders/${orderId}/release] Payment hash:`, paymentResult.payment_hash);
+    } catch (lnbitsError) {
+      console.error(`[POST /api/orders/${orderId}/release] Error sending payment to seller:`, lnbitsError);
+      
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Failed to send payment to seller',
+          details: lnbitsError instanceof Error ? lnbitsError.message : 'Unknown error',
+          hint: 'Check that the seller invoice is valid and LNbits has sufficient balance',
+        },
+        { status: 500 }
+      );
+    }
+
+    // Update order status in database - mark escrow as released
+    dbHelpers.releaseEscrow(orderId);
     console.log(`[POST /api/orders/${orderId}/release] Order status updated to 'released'`);
 
     return NextResponse.json({
       ok: true,
-      message: lnbitsReleaseSuccess
-        ? 'Escrow released successfully'
-        : 'Escrow release initiated. Order status updated locally.',
+      message: '✅ Escrow released! Payment sent to seller.',
       order_id: orderId,
       status: 'released',
-      lnbits_synced: lnbitsReleaseSuccess,
+      escrow_held: false,
+      payment_hash: paymentResult.payment_hash,
+      amount_sent: paymentResult.amount,
     });
   } catch (error) {
     console.error('[POST /api/orders/[id]/release] Error releasing escrow:', error);

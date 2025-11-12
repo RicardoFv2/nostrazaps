@@ -14,9 +14,9 @@ export function EscrowStatusBadge({ status }: EscrowStatusBadgeProps) {
     },
     paid: {
       icon: Circle,
-      label: "Pagado - En escrow",
-      color: "bg-blue-100 text-blue-800 border-blue-300",
-      dot: "🔵",
+      label: "💰 Fondos retenidos en escrow",
+      color: "bg-orange-100 text-orange-800 border-orange-300",
+      dot: "🔒",
     },
     released: {
       icon: CheckCircle,

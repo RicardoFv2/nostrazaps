@@ -24,6 +24,9 @@ interface Message {
 
 interface EscrowChatProps {
   productName: string
+  orderId?: string
+  buyerPubkey?: string
+  sellerPubkey?: string
   buyerName?: string
   sellerName?: string
   onRelease: () => void
@@ -54,17 +57,53 @@ const INITIAL_MESSAGES: Message[] = [
 
 export function EscrowChat({
   productName,
+  orderId,
+  buyerPubkey,
+  sellerPubkey,
   buyerName = "Tú",
   sellerName = "Vendedor",
   onRelease,
   onCancel,
   isBuyer,
 }: EscrowChatProps) {
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
+  const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
   const [showConfirmRelease, setShowConfirmRelease] = useState(false)
   const [showConfirmCancel, setShowConfirmCancel] = useState(false)
+  const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Load messages from API
+  useEffect(() => {
+    if (orderId) {
+      const loadMessages = async () => {
+        try {
+          const response = await fetch(`/api/chat?order_id=${orderId}`)
+          const data = await response.json()
+          if (data.ok && Array.isArray(data.messages)) {
+            setMessages(
+              data.messages.map((msg: { id: string; from: string; text: string; timestamp: string }) => ({
+                id: msg.id,
+                from: msg.from as "buyer" | "seller",
+                text: msg.text,
+                timestamp: new Date(msg.timestamp),
+              }))
+            )
+          }
+        } catch (error) {
+          console.error('Error loading messages:', error)
+        }
+      }
+      loadMessages()
+
+      // Poll for new messages every 5 seconds
+      const interval = setInterval(loadMessages, 5000)
+      return () => clearInterval(interval)
+    } else {
+      // Fallback to initial messages if no orderId
+      setMessages(INITIAL_MESSAGES)
+    }
+  }, [orderId])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -74,18 +113,75 @@ export function EscrowChat({
     scrollToBottom()
   }, [messages])
 
-  const handleSendMessage = () => {
-    if (inputValue.trim() === "") return
+  const handleSendMessage = async () => {
+    if (inputValue.trim() === "" || !orderId || !buyerPubkey) return
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      from: isBuyer ? "buyer" : "seller",
-      text: inputValue,
-      timestamp: new Date(),
-    }
-
-    setMessages([...messages, newMessage])
+    setLoading(true)
+    const messageText = inputValue.trim()
     setInputValue("")
+
+    try {
+      // Get seller pubkey from order or use a default
+      // In production, this would come from the order/product data
+      const receiverPubkey = isBuyer ? sellerPubkey || "" : buyerPubkey
+      const senderPubkey = isBuyer ? buyerPubkey : sellerPubkey || ""
+
+      console.log('[EscrowChat] Sending message:', {
+        isBuyer,
+        senderPubkey: senderPubkey.substring(0, 20) + '...',
+        receiverPubkey: receiverPubkey.substring(0, 20) + '...',
+        orderId,
+      })
+
+      if (!receiverPubkey || !senderPubkey) {
+        console.error('[EscrowChat] Missing pubkey information:', {
+          buyerPubkey: buyerPubkey ? 'present' : 'MISSING',
+          sellerPubkey: sellerPubkey ? 'present' : 'MISSING',
+          isBuyer,
+        })
+        throw new Error(
+          "Missing pubkey information. " +
+          (!sellerPubkey ? "Seller pubkey not loaded. " : "") +
+          (!buyerPubkey ? "Buyer pubkey not loaded. " : "") +
+          "Please refresh the page or contact support."
+        )
+      }
+
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          order_id: orderId,
+          sender: senderPubkey,
+          receiver: receiverPubkey,
+          content: messageText,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.ok) {
+        // Add message to local state immediately
+        const newMessage: Message = {
+          id: data.message_id || Date.now().toString(),
+          from: isBuyer ? "buyer" : "seller",
+          text: messageText,
+          timestamp: new Date(),
+        }
+        setMessages([...messages, newMessage])
+      } else {
+        throw new Error(data.error || 'Error al enviar el mensaje')
+      }
+    } catch (error) {
+      console.error('Error sending message:', error)
+      alert(error instanceof Error ? error.message : "Error al enviar el mensaje")
+      // Restore input value on error
+      setInputValue(messageText)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleRelease = () => {
@@ -148,10 +244,15 @@ export function EscrowChat({
           />
           <Button
             onClick={handleSendMessage}
+            disabled={loading || !orderId}
             size="sm"
             className="bg-yellow-400 hover:bg-yellow-500 text-black font-semibold px-3"
           >
-            <Send className="w-4 h-4" />
+            {loading ? (
+              <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
           </Button>
         </div>
       </div>

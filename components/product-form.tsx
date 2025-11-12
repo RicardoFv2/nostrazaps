@@ -2,22 +2,87 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 
 const CATEGORIES = ["Ropa", "Repuestos", "Encomiendas", "Artículos de segunda mano", "Otros"]
 
-export default function ProductForm() {
+interface ProductFormProps {
+  onProductCreated?: () => void
+}
+
+export default function ProductForm({ onProductCreated }: ProductFormProps) {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [stalls, setStalls] = useState<Array<{ id: string; name: string }>>([])
+  const [loadingStalls, setLoadingStalls] = useState(true)
+  const [isMerchant, setIsMerchant] = useState(false)
+  const [checkingMerchant, setCheckingMerchant] = useState(true)
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     price: "",
     category: CATEGORIES[0],
     image: null as File | null,
+    stall_id: "",
   })
+
+  // Check if user is a merchant
+  useEffect(() => {
+    const checkMerchant = async () => {
+      try {
+        const merchantId = localStorage.getItem('merchant_id')
+        if (merchantId) {
+          // Verify merchant exists
+          const response = await fetch('/api/merchants')
+          const data = await response.json()
+          if (data.ok && data.merchant) {
+            setIsMerchant(true)
+          } else {
+            // Merchant not found, redirect to registration
+            router.push('/register/merchant')
+            return
+          }
+        } else {
+          // No merchant ID, redirect to registration
+          router.push('/register/merchant')
+          return
+        }
+      } catch (error) {
+        console.error('Error checking merchant:', error)
+        router.push('/register/merchant')
+      } finally {
+        setCheckingMerchant(false)
+      }
+    }
+    checkMerchant()
+  }, [router])
+
+  // Load stalls on mount (only if merchant)
+  useEffect(() => {
+    if (!isMerchant) return
+
+    const loadStalls = async () => {
+      try {
+        const response = await fetch('/api/stalls')
+        const data = await response.json()
+        if (data.ok && Array.isArray(data.stalls)) {
+          setStalls(data.stalls.map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })))
+        } else if (data.ok && data.stall) {
+          // Single stall returned
+          setStalls([{ id: data.stall.id, name: data.stall.name }])
+        }
+      } catch (error) {
+        console.error('Error loading stalls:', error)
+      } finally {
+        setLoadingStalls(false)
+      }
+    }
+    loadStalls()
+  }, [isMerchant])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -35,15 +100,82 @@ export default function ProductForm() {
     setLoading(true)
 
     try {
-      // Mock API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Convert image to base64 or upload to a service
+      let imageUrl: string | null = null
+      if (formData.image) {
+        // For now, we'll use a placeholder. In production, upload to a CDN/storage service
+        imageUrl = URL.createObjectURL(formData.image)
+        // Or convert to base64: const reader = new FileReader(); reader.readAsDataURL(formData.image); ...
+      }
+
+      // Get stall_id from localStorage or form
+      const stallId = formData.stall_id || localStorage.getItem('stall_id')
+      
+      if (!stallId) {
+        throw new Error('No se encontró el ID de la tienda. Por favor, crea una tienda primero.')
+      }
+
+      // Create product directly in NostrMarket via API
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description,
+          price_sats: parseInt(formData.price, 10),
+          category: formData.category,
+          image: imageUrl,
+          stall_id: stallId,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!data.ok) {
+        throw new Error(data.error || 'Error al publicar el producto')
+      }
+
       alert("Producto publicado exitosamente!")
-      setFormData({ name: "", description: "", price: "", category: CATEGORIES[0], image: null })
+      setFormData({ name: "", description: "", price: "", category: CATEGORIES[0], image: null, stall_id: "" })
+      
+      // Callback para notificar que se creó el producto
+      if (onProductCreated) {
+        onProductCreated()
+      } else {
+        router.push('/marketplace')
+      }
     } catch (error) {
-      alert("Error al publicar el producto")
+      console.error('Error creating product:', error)
+      alert(error instanceof Error ? error.message : "Error al publicar el producto")
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checkingMerchant) {
+    return (
+      <div className="bg-card border border-border rounded-lg p-8">
+        <div className="flex items-center justify-center py-12">
+          <Spinner className="h-8 w-8" />
+        </div>
+      </div>
+    )
+  }
+
+  if (!isMerchant) {
+    return (
+      <div className="bg-card border border-border rounded-lg p-8 text-center space-y-4">
+        <h2 className="text-2xl font-bold text-foreground">Acceso Restringido</h2>
+        <p className="text-muted-foreground">
+          Necesitas crear un perfil de comerciante para publicar productos.
+        </p>
+        <Button onClick={() => router.push('/register/merchant')} className="mt-4">
+          Crear Perfil de Comerciante
+        </Button>
+      </div>
+    )
   }
 
   return (
@@ -95,6 +227,25 @@ export default function ProductForm() {
           </select>
         </div>
       </div>
+
+      {!loadingStalls && stalls.length > 0 && (
+        <div>
+          <label className="block text-sm font-semibold text-foreground mb-2">Tienda (Opcional)</label>
+          <select
+            name="stall_id"
+            value={formData.stall_id}
+            onChange={handleChange}
+            className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">Seleccionar tienda...</option>
+            {stalls.map((stall) => (
+              <option key={stall.id} value={stall.id}>
+                {stall.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div>
         <label className="block text-sm font-semibold text-foreground mb-2">Imagen del producto</label>

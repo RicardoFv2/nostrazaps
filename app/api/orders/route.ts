@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { dbHelpers } from '@/lib/db';
-import { createOrder as createLNbitsOrder } from '@/lib/lnbits';
+import { createLightningInvoice } from '@/lib/lnbits';
 import type { CreateOrderRequest, CreateOrderResponse, Order } from '@/types';
 import { randomUUID } from 'crypto';
 
@@ -103,49 +103,46 @@ export const POST = async (request: NextRequest) => {
     // Generate order ID
     const orderId = randomUUID();
 
-    // Create order in LNbits to get payment request
+    // Generate Lightning invoice using LNbits API
     let paymentRequest: string | null = null;
     let paymentHash: string | null = null;
     let totalSats: number = product.price_sats;
-    let lnbitsOrderId: string | null = null;
 
     try {
-      console.log('[POST /api/orders] Creating order in LNbits...');
-      const lnbitsOrder = await createLNbitsOrder({
-        product_id: body.product_id,
-        buyer_pubkey: body.buyer_pubkey,
+      console.log('[POST /api/orders] Generating Lightning invoice...');
+      
+      // Get product details for invoice memo
+      const productData = product as { name?: string; price_sats: number };
+      const memo = `TurboZaps - ${productData.name || 'Product'} - Order ${orderId.substring(0, 8)}`;
+      
+      const invoice = await createLightningInvoice({
+        amount: product.price_sats,
+        memo: memo,
+        order_id: orderId,
       });
 
-      // Extract order information from LNbits response
-      lnbitsOrderId = lnbitsOrder.id || orderId;
-      paymentRequest = lnbitsOrder.payment_request || null;
-      paymentHash = lnbitsOrder.payment_hash || null;
-      totalSats = lnbitsOrder.total || product.price_sats;
+      paymentRequest = invoice.payment_request;
+      paymentHash = invoice.payment_hash;
 
-      console.log('[POST /api/orders] Order created in LNbits:', {
-        orderId: lnbitsOrderId,
+      console.log('[POST /api/orders] Lightning invoice generated successfully:', {
+        orderId: orderId,
         hasPaymentRequest: !!paymentRequest,
         totalSats,
+        paymentHash: paymentHash.substring(0, 16) + '...',
       });
     } catch (lnbitsError) {
-      console.error('[POST /api/orders] Error creating order in LNbits:', lnbitsError);
+      console.error('[POST /api/orders] Error generating Lightning invoice:', lnbitsError);
       
-      // Check if it's a known error (e.g., orders created via Nostr)
-      if (lnbitsError instanceof Error) {
-        if (lnbitsError.message.includes('404') || lnbitsError.message.includes('not found')) {
-          console.warn(
-            '[POST /api/orders] LNbits order creation endpoint not available. ' +
-            'Orders may be created through Nostr events. Continuing with local order creation.'
-          );
-          // Continue with local order creation
-        } else {
-          // For other errors, we still create the order locally but log the error
-          console.warn('[POST /api/orders] LNbits error (non-fatal), continuing with local order');
-        }
-      }
-      
-      // Use product price as fallback
-      totalSats = product.price_sats;
+      // If invoice generation fails, we can't proceed
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Failed to generate Lightning invoice',
+          message: lnbitsError instanceof Error ? lnbitsError.message : 'Unknown error',
+          hint: 'Verify LNBITS_URL and LNBITS_API_KEY are correctly configured',
+        },
+        { status: 500 }
+      );
     }
 
     // Create order in database

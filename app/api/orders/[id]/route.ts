@@ -120,3 +120,81 @@ export const GET = async (
   }
 };
 
+// PATCH /api/orders/[id] - Update order status
+export const PATCH = async (
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> | { id: string } }
+) => {
+  try {
+    const resolvedParams = await Promise.resolve(params);
+    const orderId = resolvedParams.id;
+    const body = await request.json();
+
+    if (!orderId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Order ID is required',
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[PATCH /api/orders/${orderId}] Updating order:`, body);
+
+    // Get order from database
+    const order = dbHelpers.getOrderById(orderId) as Order | undefined;
+
+    if (!order) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Order not found',
+        },
+        { status: 404 }
+      );
+    }
+
+    // Update order in LNbits if paid or shipped status is being updated
+    if (body.paid !== undefined || body.shipped !== undefined) {
+      try {
+        const { updateOrder } = await import('@/lib/lnbits');
+        await updateOrder(orderId, {
+          paid: body.paid,
+          shipped: body.shipped,
+          message: body.message,
+        });
+      } catch (lnbitsError) {
+        console.error(`[PATCH /api/orders/${orderId}] Error updating order in LNbits (non-fatal):`, lnbitsError);
+      }
+    }
+
+    // Update order status in database
+    if (body.paid === true && order.status === 'pending') {
+      dbHelpers.updateOrderStatus(orderId, 'paid');
+    } else if (body.shipped === true && order.status === 'paid') {
+      // When shipped is true and paid is true, it means escrow is released
+      dbHelpers.updateOrderStatus(orderId, 'released');
+    }
+
+    // Get updated order
+    const updatedOrder = dbHelpers.getOrderById(orderId) as Order;
+
+    return NextResponse.json({
+      ok: true,
+      order: updatedOrder,
+      message: 'Order updated successfully',
+    });
+  } catch (error) {
+    console.error('[PATCH /api/orders/[id]] Error updating order:', error);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: 'Failed to update order',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
+};
+

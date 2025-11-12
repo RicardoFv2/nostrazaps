@@ -22,31 +22,27 @@ export default function MarketplacePage() {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const res = await fetch("https://kkotrack-backend.vercel.app/api/products")
+        const res = await fetch("/api/products")
         if (!res.ok) throw new Error("Failed to fetch products")
         const data = await res.json()
-        setProducts(data)
+        
+        if (data.ok && Array.isArray(data.products)) {
+          // Transform products to match interface
+          const transformedProducts = data.products.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            price: p.price_sats || p.price || 0,
+            image: p.image || "/placeholder.svg",
+            category: p.category || "Otros",
+          }))
+          setProducts(transformedProducts)
+        } else {
+          throw new Error("Invalid response format")
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Error loading products")
-        // Mock data for demo
-        setProducts([
-          { id: "1", name: "Camiseta Azul", price: 50000, image: "/blue-shirt.png", category: "Ropa" },
-          { id: "2", name: "Pantalones Negro", price: 75000, image: "/black-pants.png", category: "Ropa" },
-          {
-            id: "3",
-            name: "Repuesto Motor",
-            price: 150000,
-            image: "/generic-car-part.png",
-            category: "Repuestos",
-          },
-          {
-            id: "4",
-            name: "Encomienda USA",
-            price: 25000,
-            image: "/wrapped-parcel.png",
-            category: "Encomiendas",
-          },
-        ])
+        // Fallback to empty array if API fails
+        setProducts([])
       } finally {
         setLoading(false)
       }

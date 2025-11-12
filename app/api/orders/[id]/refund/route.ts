@@ -1,12 +1,13 @@
 // TurboZaps Orders API - Refund Order
-// Sprint 3 - Refund escrow funds to buyer with validation
+// Sprint 3 - Refund order and return funds to buyer with TRUE ESCROW
 
 import { NextRequest, NextResponse } from 'next/server';
 import { dbHelpers } from '@/lib/db';
 import { refundOrder } from '@/lib/lnbits';
 import type { Order } from '@/types';
 
-// POST /api/orders/[id]/refund - Refund escrow funds to buyer
+// POST /api/orders/[id]/refund - Refund order and return funds to buyer
+// REAL ESCROW: Sends Lightning payment from system wallet back to buyer
 export const POST = async (
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> | { id: string } }
@@ -15,13 +16,19 @@ export const POST = async (
     const resolvedParams = await Promise.resolve(params);
     const orderId = resolvedParams.id;
 
-    // Optional: Get buyer_pubkey from request body for ownership validation
-    // In a full implementation, this would come from authentication/session
-    let requestBody: { buyer_pubkey?: string; shipping_id?: string } | null = null;
+    // Get buyer_payment_request (Lightning invoice) from request body
+    // This is where the buyer wants to receive the refund
+    let requestBody: { buyer_payment_request?: string; message?: string } | null = null;
     try {
-      requestBody = await request.json().catch(() => null);
+      requestBody = await request.json();
     } catch {
-      // Request body is optional
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Request body is required with buyer_payment_request (Lightning invoice)',
+        },
+        { status: 400 }
+      );
     }
 
     if (!orderId) {
@@ -34,7 +41,17 @@ export const POST = async (
       );
     }
 
-    console.log(`[POST /api/orders/${orderId}/refund] Refunding order`);
+    if (!requestBody?.buyer_payment_request) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'buyer_payment_request (Lightning invoice) is required to refund',
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[POST /api/orders/${orderId}/refund] Refunding order with TRUE PAYMENT`);
 
     // Get order from database
     const order = dbHelpers.getOrderById(orderId) as Order | undefined;
@@ -50,108 +67,82 @@ export const POST = async (
       );
     }
 
-    // Validate buyer ownership (if buyer_pubkey is provided in request)
-    if (requestBody?.buyer_pubkey && requestBody.buyer_pubkey !== order.buyer_pubkey) {
+    // Validate order status - can only refund if paid (and not yet released)
+    if (order.status !== 'paid') {
       console.error(
-        `[POST /api/orders/${orderId}/refund] Buyer pubkey mismatch. ` +
-        `Expected: ${order.buyer_pubkey.substring(0, 20)}..., ` +
-        `Got: ${requestBody.buyer_pubkey.substring(0, 20)}...`
+        `[POST /api/orders/${orderId}/refund] Invalid order status: ${order.status}. Can only refund 'paid' orders`
       );
       return NextResponse.json(
         {
           ok: false,
-          error: 'Unauthorized. Only the buyer can refund this order.',
-        },
-        { status: 403 }
-      );
-    }
-
-    // Validate order status (can refund if pending or paid, but not released or already refunded)
-    if (order.status === 'released') {
-      console.error(
-        `[POST /api/orders/${orderId}/refund] Cannot refund order with status: ${order.status}. ` +
-        `Escrow has already been released to the seller.`
-      );
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Cannot refund order. Escrow has already been released to the seller.',
+          error: `Can only refund orders in 'paid' status. Current status: ${order.status}`,
           current_status: order.status,
         },
         { status: 400 }
       );
     }
 
-    if (order.status === 'refunded') {
-      console.error(
-        `[POST /api/orders/${orderId}/refund] Order already refunded. Status: ${order.status}`
-      );
+    // Check if escrow is still held
+    if (order.escrow_held === false || order.escrow_held === 0) {
       return NextResponse.json(
         {
           ok: false,
-          error: 'Order has already been refunded.',
-          current_status: order.status,
+          error: 'Escrow has already been released or refunded',
         },
         { status: 400 }
       );
     }
 
-    // Refund order in LNbits
-    let lnbitsRefundSuccess = false;
+    // Validate we have the amount
+    if (!order.total_sats || order.total_sats <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Order amount is invalid or missing',
+        },
+        { status: 400 }
+      );
+    }
+
+    // Refund by sending Lightning payment back to buyer
+    let paymentResult;
     try {
-      console.log(`[POST /api/orders/${orderId}/refund] Refunding order in LNbits...`);
-      await refundOrder(orderId, requestBody?.shipping_id);
-      lnbitsRefundSuccess = true;
-      console.log(`[POST /api/orders/${orderId}/refund] Order refunded successfully in LNbits`);
-    } catch (lnbitsError) {
-      console.error(`[POST /api/orders/${orderId}/refund] Error refunding order in LNbits:`, lnbitsError);
+      console.log(`[POST /api/orders/${orderId}/refund] Sending ${order.total_sats} sats to buyer (refund)...`);
       
-      // Check if it's a critical error that should prevent database update
-      if (lnbitsError instanceof Error) {
-        // For 403, we might not have permission (critical)
-        if (lnbitsError.message.includes('403') || lnbitsError.message.includes('forbidden')) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error: 'Permission denied. Unable to refund order in LNbits.',
-              details: lnbitsError.message,
-            },
-            { status: 403 }
-          );
-        }
-        
-        // For pending orders that haven't been paid yet, LNbits might return 404
-        // This is expected and we can still update the database
-        if (order.status === 'pending' && lnbitsError.message.includes('404')) {
-          console.log(
-            `[POST /api/orders/${orderId}/refund] Order is pending (not paid), ` +
-            `LNbits refund not applicable. Updating database status.`
-          );
-        } else {
-          // For other errors, we can still update the database
-          // This allows the system to work even if LNbits is temporarily unavailable
-          console.warn(
-            `[POST /api/orders/${orderId}/refund] LNbits error (non-fatal), updating database status`
-          );
-        }
-      }
+      paymentResult = await refundOrder(
+        requestBody.buyer_payment_request,
+        order.total_sats,
+        orderId
+      );
+      
+      console.log(`[POST /api/orders/${orderId}/refund] Refund payment sent successfully!`);
+      console.log(`[POST /api/orders/${orderId}/refund] Payment hash:`, paymentResult.payment_hash);
+    } catch (lnbitsError) {
+      console.error(`[POST /api/orders/${orderId}/refund] Error sending refund to buyer:`, lnbitsError);
+      
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Failed to send refund to buyer',
+          details: lnbitsError instanceof Error ? lnbitsError.message : 'Unknown error',
+          hint: 'Check that the buyer invoice is valid and LNbits has sufficient balance',
+        },
+        { status: 500 }
+      );
     }
 
-    // Update order status in database
-    dbHelpers.updateOrderStatus(orderId, 'refunded');
+    // Update order status in database - mark as refunded
+    dbHelpers.refundEscrow(orderId);
     console.log(`[POST /api/orders/${orderId}/refund] Order status updated to 'refunded'`);
 
     return NextResponse.json({
       ok: true,
-      message: lnbitsRefundSuccess
-        ? 'Order refunded successfully'
-        : order.status === 'pending'
-        ? 'Order cancelled successfully (no payment was made)'
-        : 'Refund initiated. Order status updated locally.',
+      message: '✅ Order refunded! Payment sent back to buyer.',
       order_id: orderId,
       status: 'refunded',
-      lnbits_synced: lnbitsRefundSuccess,
-      previous_status: order.status,
+      escrow_held: false,
+      payment_hash: paymentResult.payment_hash,
+      amount_refunded: paymentResult.amount,
     });
   } catch (error) {
     console.error('[POST /api/orders/[id]/refund] Error refunding order:', error);
@@ -165,4 +156,3 @@ export const POST = async (
     );
   }
 };
-

@@ -1,19 +1,39 @@
 # ⚡ TurboZaps
 
-**TurboZaps** es una plataforma descentralizada de compraventa pensada para el comercio informal en El Salvador.
-Permite publicar anuncios, comprar productos y realizar pagos seguros a través de **Lightning Network (LNbits)** con un **sistema de escrow** que protege a comprador y vendedor.
+> **"Pagos instantáneos, confianza sin bancos."**
+
+**TurboZaps** es una plataforma descentralizada de compraventa P2P con **escrow automático Lightning** para mercados informales. Construida con Lightning Network (LNbits) y Nostr para comunicación descentralizada.
+
+🎯 **Estado:** MVP Completo - Listo para demo  
+🏆 **Hackathón:** Lightning / Nostr / Web3 (Noviembre 2025)
 
 ---
 
 ## 🚀 Características principales
 
-- 🛒 **Marketplace P2P:** Compra y venta directa de artículos nuevos o usados.
-- ⚡ **Pagos Lightning Network:** Integración con LNbits y soporte futuro para NostrMarket.
-- 🤝 **Escrow de confianza:** Los fondos se mantienen retenidos hasta que ambas partes confirmen.
-- 💬 **Chat entre partes:** Comunicación directa para coordinar entrega o negociación.
-- 🧑‍💻 **Roles separados:** Paneles de control para comprador y vendedor.
-- 📱 **UI moderna y ligera:** Construida con Next.js + TypeScript + TailwindCSS.
-- 🌗 **Modo oscuro opcional** (si v0 lo generó).
+- 🛒 **Marketplace P2P:** Compra y venta directa de artículos nuevos o usados
+- ⚡ **Pagos Lightning:** Integración completa con LNbits NostrMarket API
+- 🔐 **Escrow automático:** Fondos retenidos hasta confirmación del comprador
+- 💬 **Chat P2P vía Nostr:** Comunicación descentralizada y cifrada
+- 🧑‍💻 **Roles completos:** Merchant (vendedor) y Customer (comprador)
+- 📊 **Dashboards:** Gestión de ventas, compras y escrows activos
+- 📱 **UI moderna:** Next.js 14 + TypeScript + TailwindCSS + Shadcn/ui
+- 🌐 **Descentralizado:** Identidad Nostr + Lightning Network
+
+---
+
+## ⚡ Flujo Completo
+
+```
+1. Merchant crea cuenta → Publica productos en NostrMarket
+2. Buyer crea cuenta → Navega marketplace
+3. Buyer compra producto → Sistema genera invoice Lightning
+4. Buyer paga invoice → Fondos quedan en ESCROW
+5. Chat P2P → Negocian entrega vía Nostr
+6. Buyer confirma → Fondos liberados al vendedor ✅
+```
+
+📖 **Ver flujo detallado:** [`FLUJO_COMPLETO.md`](./FLUJO_COMPLETO.md)
 
 ---
 
@@ -22,150 +42,243 @@ Permite publicar anuncios, comprar productos y realizar pagos seguros a través 
 ```
 turbozaps/
 ├── app/
-│   ├── globals.css                 # Estilos globales de Next.js
-│   ├── layout.tsx                  # Layout principal de la aplicación
-│   ├── page.tsx                    # Landing page
-│   ├── api/                        # API Routes de Next.js
-│   │   ├── chat/
-│   │   │   └── route.ts            # API de chat buyer/seller
-│   │   ├── orders/
-│   │   │   └── route.ts            # API de órdenes (GET/POST)
-│   │   ├── orders/[id]/
-│   │   │   └── route.ts            # API específica de orden
-│   │   ├── orders/[id]/refund/
-│   │   │   └── route.ts            # API de reembolso de orden
-│   │   ├── orders/[id]/release/
-│   │   │   └── route.ts            # API de liberación de escrow
-│   │   └── products/
-│   │       └── route.ts            # API de productos
-│   ├── cart/
-│   │   └── page.tsx                # Página del carrito de compras
+│   ├── api/                        # API Routes (Next.js)
+│   │   ├── merchants/              # ✅ Gestión de merchants
+│   │   ├── stalls/                 # ✅ Gestión de stalls (tiendas)
+│   │   ├── customers/              # ✅ Gestión de buyers
+│   │   ├── products/               # ✅ CRUD de productos
+│   │   ├── orders/                 # ✅ Sistema de órdenes
+│   │   │   └── [id]/
+│   │   │       ├── release/        # ✅ Liberar escrow
+│   │   │       └── refund/         # ✅ Devolver fondos
+│   │   └── chat/                   # ✅ Chat P2P vía Nostr
+│   ├── register/
+│   │   ├── merchant/               # ✅ Registro de vendedor
+│   │   └── buyer/                  # ✅ Registro de comprador
+│   ├── select-role/                # ✅ Selector de rol
+│   ├── marketplace/                # ✅ Listado de productos
+│   ├── sell/                       # ✅ Gestión de productos (seller)
+│   ├── product/[id]/               # ✅ Detalle + compra
 │   ├── dashboard/
-│   │   ├── buyer/
-│   │   │   └── page.tsx            # Panel del comprador
-│   │   └── seller/
-│   │       └── page.tsx            # Panel del vendedor
-│   ├── marketplace/
-│   │   └── page.tsx                # Listado de productos
-│   ├── product/[id]/
-│   │   └── page.tsx                # Detalle de producto
-│   ├── select-role/
-│   │   └── page.tsx                # Pantalla para elegir rol
-│   └── sell/
-│       └── page.tsx                # Publicar anuncio
+│   │   ├── buyer/                  # ✅ Dashboard comprador
+│   │   └── seller/                 # ✅ Dashboard vendedor
+│   └── page.tsx                    # Landing page
 ├── components/
-│   ├── ui/                         # Componentes base de UI (shadcn/ui)
-│   ├── cta.tsx                     # Call-to-action component
-│   ├── dashboard-layout.tsx        # Layout del dashboard
-│   ├── escrow-chat.tsx             # Componente de chat de escrow
-│   ├── escrow-status-badge.tsx     # Badge de estado de escrow
-│   ├── escrows-table.tsx           # Tabla de escrows
-│   ├── features.tsx                # Sección de características
-│   ├── footer.tsx                  # Footer de la aplicación
-│   ├── hero.tsx                    # Sección hero
-│   ├── how-it-works.tsx            # Sección "cómo funciona"
-│   ├── lightning-payment-modal.tsx # Modal de pago Lightning
-│   ├── navbar.tsx                  # Barra de navegación
-│   ├── product-card.tsx            # Tarjeta de producto
-│   ├── product-detail.tsx          # Detalle de producto
-│   ├── product-form.tsx            # Formulario de producto
-│   ├── theme-provider.tsx          # Proveedor de tema
-│   └── why-turbozaps.tsx           # Sección "por qué TurboZaps"
-├── docs/
-│   └── api.md                      # Documentación de la API
+│   ├── ui/                         # Shadcn/ui components
+│   ├── product-form.tsx            # ✅ Crear productos
+│   ├── product-detail.tsx          # ✅ Detalle + compra + escrow
+│   ├── lightning-payment-modal.tsx # ✅ Modal de pago
+│   ├── escrow-chat.tsx             # ✅ Chat P2P
+│   ├── escrows-table.tsx           # ✅ Tabla de transacciones
+│   └── ...                         # Otros componentes de UI
 ├── lib/
-│   ├── config.ts                   # Configuraciones
-│   ├── db.ts                       # Utilidades de base de datos
-│   ├── lnbits.ts                   # Integración con LNbits
-│   └── utils.ts                    # Utilidades generales
-├── public/                         # Assets estáticos
-├── scripts/
-│   ├── README.md                   # Documentación de scripts
-│   └── test-local.ts               # Script de testing local
-├── styles/
-│   └── globals.css                 # Estilos globales adicionales
+│   ├── lnbits.ts                   # ✅ Wrapper API LNbits
+│   ├── db.ts                       # ✅ SQLite local
+│   ├── config.ts                   # ✅ Configuración
+│   └── utils.ts                    # Utilidades
 ├── types/
-│   └── index.ts                    # Definiciones de tipos TypeScript
-├── .gitignore                      # Archivos ignorados por Git
-├── eslint.config.mjs               # Configuración de ESLint
-├── next.config.mjs                 # Configuración de Next.js
-├── package.json                    # Dependencias y scripts
-├── pnpm-lock.yaml                  # Lockfile de pnpm
-├── README.md                       # Este archivo
-├── SPRINTS.MD                      # Documentación de sprints
-├── tsconfig.json                   # Configuración de TypeScript
-└── ...
+│   └── index.ts                    # ✅ TypeScript interfaces
+├── docs/
+│   ├── api.md                      # ✅ API Reference LNbits
+│   ├── FLUJO_COMPLETO.md           # ✅ Flujo técnico detallado
+│   ├── README_FLUJO.md             # ✅ Guía de usuario
+│   ├── DEMO_SCRIPT.md              # ✅ Script para demo
+│   ├── STATUS.md                   # ✅ Estado del proyecto
+│   └── QUICK_REFERENCE.md          # ✅ Referencia rápida
+├── .env.local                      # Variables de entorno
+├── package.json                    # Dependencias
+└── turbozaps.db                    # Base de datos SQLite
 ```
 
 ---
 
-## 🛠️ Tecnologías utilizadas
+## 🛠️ Stack Tecnológico
 
 | Tecnología | Uso |
 |-------------|-----|
-| **Next.js 14 (App Router)** | Framework principal |
-| **TypeScript** | Tipado estático |
-| **TailwindCSS** | Estilos y diseño responsivo |
-| **LNbits API** | Manejo de pagos Lightning |
-| **NostrMarket (opcional)** | Extensión para listados descentralizados |
-| **Framer Motion** | Animaciones suaves |
-| **React Hot Toast** | Notificaciones visuales |
+| **Next.js 14 (App Router)** | Framework principal + API Routes |
+| **TypeScript** | Tipado estático end-to-end |
+| **TailwindCSS + Shadcn/ui** | Estilos y componentes |
+| **LNbits + NostrMarket** | Pagos Lightning + Marketplace descentralizado |
+| **Nostr Protocol** | Identidad descentralizada + Chat P2P |
+| **SQLite** | Base de datos local |
+| **React Hooks** | Gestión de estado |
 
 ---
 
-## ⚙️ Instalación local
+## ⚙️ Instalación y Configuración
 
-1. **Clona el repositorio:**
-   ```bash
-   git clone https://github.com/<tu_usuario>/turbozaps.git
-   cd turbozaps
-   ```
-
-2. **Instala las dependencias:**
-   ```bash
-   pnpm install
-   # o
-   npm install
-   ```
-
-3. **Inicia el servidor de desarrollo:**
-   ```bash
-   pnpm dev
-   # o
-   npm run dev
-   ```
-
-4. **Abre en el navegador:**
-   ```
-   http://localhost:3000
-   ```
-## 🌐 Integración con LNbits
-
-**Nota:** Durante el hackatón puedes usar LNbits local o un servidor público.
-
-Configura tu URL y API key en variables de entorno:
+### 1. Clona el repositorio
 
 ```bash
-NEXT_PUBLIC_LNBITS_URL=https://legend.lnbits.com
-NEXT_PUBLIC_LNBITS_API_KEY=<tu_api_key>
+git clone https://github.com/turbozaps/turbozaps.git
+cd turbozaps
 ```
 
-## 🔒 Escrow Flow (visión general)
+### 2. Instala dependencias
 
-1. **Compra:** El comprador genera un pago Lightning.
-2. **Retención:** LNbits mantiene los fondos en escrow.
-3. **Entrega:** El vendedor entrega el producto.
-4. **Liberación:** El comprador confirma, los fondos se liberan al vendedor.
+```bash
+pnpm install
+# o
+npm install
+```
 
-## 👨‍💻 Equipo & Hackathon
+### 3. Configura variables de entorno
 
-Proyecto creado en 1 día para hackatón Lightning / Nostr / Web3.
+Crea un archivo `.env.local` en la raíz del proyecto:
 
-**Equipo TurboZaps ⚡**
+```bash
+# LNbits Configuration
+LNBITS_URL=https://demo.lnbits.com
+LNBITS_API_KEY=your_admin_key_here
 
-- Ricardo Fuentes – Backend & Arquitectura LNbits
-- *(Agregar más si participan)*
+# Database
+DATABASE_URL=./turbozaps.db
+```
+
+> ⚠️ **Importante:** Necesitas tener instalada la extensión **NostrMarket** en tu instancia de LNbits.
+
+### 4. Inicia el servidor
+
+```bash
+pnpm dev
+```
+
+### 5. Abre en el navegador
+
+```
+http://localhost:3000
+```
+
+---
+
+## 🌐 Configuración de LNbits
+
+### Opción A: Demo (para testing)
+
+```env
+LNBITS_URL=https://demo.lnbits.com
+LNBITS_API_KEY=your_demo_key
+```
+
+### Opción B: Instancia propia
+
+1. Instala LNbits: https://lnbits.com
+2. Activa la extensión **NostrMarket**
+3. Crea una API Key (Admin o Invoice)
+4. Configura `.env.local`
+
+---
+
+## 🔒 Flujo de Escrow
+
+```
+┌──────────┐
+│ COMPRA   │ → Buyer paga invoice Lightning
+└────┬─────┘
+     ↓
+┌──────────┐
+│ ESCROW   │ → Fondos retenidos en LNbits
+└────┬─────┘
+     ↓
+┌──────────┐
+│ CHAT P2P │ → Negocian entrega vía Nostr
+└────┬─────┘
+     ↓
+┌──────────┐
+│ CONFIRMA │ → Buyer confirma recepción
+└────┬─────┘
+     ↓
+┌──────────┐
+│ LIBERA   │ → Fondos transferidos al seller ✅
+└──────────┘
+```
+
+---
+
+## 📚 Documentación
+
+| Documento | Descripción |
+|-----------|-------------|
+| [`docs/api.md`](./docs/api.md) | Referencia completa API LNbits NostrMarket |
+| [`FLUJO_COMPLETO.md`](./FLUJO_COMPLETO.md) | Flujo técnico detallado del sistema |
+| [`README_FLUJO.md`](./README_FLUJO.md) | Guía de usuario paso a paso |
+| [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md) | Script para presentación del hackathón |
+| [`STATUS.md`](./STATUS.md) | Estado actual del proyecto |
+| [`QUICK_REFERENCE.md`](./QUICK_REFERENCE.md) | Referencia rápida para desarrollo |
+| [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) | 🆘 Guía de solución de problemas |
+
+---
+
+## 🚀 Inicio Rápido
+
+### Para probar el flujo completo:
+
+1. **Crear Merchant:** `http://localhost:3000/register/merchant`
+2. **Crear Productos:** `http://localhost:3000/sell`
+3. **Crear Buyer:** `http://localhost:3000/register/buyer`
+4. **Comprar:** `http://localhost:3000/marketplace`
+5. **Ver Dashboards:**
+   - Buyer: `http://localhost:3000/dashboard/buyer`
+   - Seller: `http://localhost:3000/dashboard/seller`
+
+📖 **Guía detallada:** Ver [`README_FLUJO.md`](./README_FLUJO.md)  
+🎬 **Script de demo:** Ver [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md)
+
+---
+
+## 🎯 Roadmap
+
+### ✅ MVP Completo (Noviembre 2025)
+- [x] Sistema de registro (Merchants y Buyers)
+- [x] CRUD de productos en NostrMarket
+- [x] Marketplace funcional
+- [x] Órdenes con invoices Lightning
+- [x] Escrow automático
+- [x] Chat P2P vía Nostr
+- [x] Dashboards completos
+- [x] Liberación/devolución de fondos
+
+### 🔮 Futuras Mejoras
+- [ ] Sistema de reputación
+- [ ] Búsqueda y filtros avanzados
+- [ ] Notificaciones push
+- [ ] Multi-idioma (i18n)
+- [ ] Sistema de arbitraje
+- [ ] PWA (Progressive Web App)
+- [ ] Analytics y métricas
+
+---
+
+## 👨‍💻 Equipo TurboZaps
+
+**Hackathón:** Lightning / Nostr / Web3 (Noviembre 2025)
+
+- **Ricardo Fuentes** – Full-Stack & Arquitectura Lightning
+- *(Agregar más colaboradores)*
+
+---
 
 ## 📜 Licencia
 
 MIT License © 2025 TurboZaps
+
+---
+
+## 🙏 Agradecimientos
+
+- **LNbits Team** - Por la increíble infraestructura Lightning
+- **Nostr Community** - Por el protocolo descentralizado
+- **Lightning Network** - Por hacer posible los micropagos instantáneos
+
+---
+
+<div align="center">
+  
+**⚡ TurboZaps**
+
+*Pagos instantáneos, confianza sin bancos.*
+
+[Demo](https://turbozaps.com) • [Docs](./docs/api.md) • [Twitter](#) • [Discord](#)
+
+</div>

@@ -16,10 +16,12 @@ export interface Order {
   id: string;
   product_id: string;
   buyer_pubkey: string;
+  seller_pubkey?: string | null;
   status: OrderStatus;
   payment_hash: string | null;
   payment_request: string | null;
   total_sats: number | null;
+  escrow_held?: boolean | null;
   created_at: string;
 }
 
@@ -48,6 +50,7 @@ export interface CreateProductRequest {
 export interface CreateOrderRequest {
   product_id: string;
   buyer_pubkey: string;
+  seller_pubkey?: string;
 }
 
 export interface CreateOrderResponse {
@@ -102,5 +105,73 @@ export interface LNbitsOrderResponse {
   paid: boolean;
   shipped: boolean;
   total: number;
+}
+
+// Merchant Types
+export interface Merchant {
+  id?: string;
+  private_key: string;
+  public_key: string;
+  config: {
+    name: string;
+    about?: string;
+    active?: boolean;
+  };
+}
+
+export interface CreateMerchantRequest {
+  private_key: string;
+  public_key: string;
+  config: {
+    name: string;
+    about?: string;
+    active?: boolean;
+  };
+}
+
+// Stall Types
+export interface Stall {
+  id?: string;
+  wallet: string;
+  name: string;
+  currency?: string;
+  shipping_zones?: Array<{
+    id?: string;
+    name: string;
+    currency: string;
+    cost: number;
+  }>;
+}
+
+export interface CreateStallRequest {
+  wallet: string;
+  name: string;
+  currency?: string;
+  shipping_zones?: Array<{
+    id?: string;
+    name: string;
+    currency: string;
+    cost: number;
+  }>;
+}
+
+// Customer Types
+export interface Customer {
+  id?: string;
+  merchant_id: string;
+  public_key: string;
+  profile?: {
+    name?: string;
+    about?: string;
+  };
+}
+
+export interface CreateCustomerRequest {
+  merchant_id: string;
+  public_key: string;
+  profile?: {
+    name?: string;
+    about?: string;
+  };
 }
 

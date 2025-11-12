@@ -78,7 +78,7 @@ export default function SelectRolePage() {
             </Button>
           </Link>
           <Link
-            href={selectedRole === "buyer" ? "/dashboard/buyer" : selectedRole === "seller" ? "/dashboard/seller" : "#"}
+            href={selectedRole === "buyer" ? "/register/buyer" : selectedRole === "seller" ? "/register/merchant" : "#"}
             className="flex-1"
           >
             <Button disabled={!selectedRole} className="w-full bg-white text-primary hover:bg-white/90 font-semibold">

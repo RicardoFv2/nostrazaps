@@ -21,44 +21,37 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Mock product data - same as home page for consistency
-    const mockProducts: Record<string, Product> = {
-      "1": {
-        id: "1",
-        name: "Camiseta Azul",
-        price: 50000,
-        image: "/blue-shirt.png",
-        description: "Camiseta de algodón azul de alta calidad. Perfecta para uso diario. Material cómodo y duradero.",
-        category: "Ropa",
-      },
-      "2": {
-        id: "2",
-        name: "Pantalones Negro",
-        price: 75000,
-        image: "/black-pants.png",
-        description: "Pantalones negros de mezclilla resistentes. Talla única. Diseño clásico y versátil.",
-        category: "Ropa",
-      },
-      "3": {
-        id: "3",
-        name: "Repuesto Motor",
-        price: 150000,
-        image: "/generic-car-part.png",
-        description: "Repuesto original para motor. Garantizado por el fabricante. Entrega inmediata.",
-        category: "Repuestos",
-      },
-      "4": {
-        id: "4",
-        name: "Encomienda USA",
-        price: 25000,
-        image: "/wrapped-parcel.png",
-        description: "Servicio de encomienda desde USA. Entrega en 7-10 días. Rastreo incluido.",
-        category: "Encomiendas",
-      },
+    const fetchProduct = async () => {
+      try {
+        const response = await fetch('/api/products')
+        const data = await response.json()
+        
+        if (data.ok && Array.isArray(data.products)) {
+          const foundProduct = data.products.find((p: any) => p.id === id)
+          if (foundProduct) {
+            setProduct({
+              id: foundProduct.id,
+              name: foundProduct.name,
+              price: foundProduct.price_sats || foundProduct.price || 0,
+              image: foundProduct.image || "/placeholder.svg",
+              description: foundProduct.description || "",
+              category: foundProduct.category || "Otros",
+            })
+          } else {
+            setProduct(null)
+          }
+        } else {
+          setProduct(null)
+        }
+      } catch (error) {
+        console.error('Error loading product:', error)
+        setProduct(null)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    setProduct(mockProducts[id] || null)
-    setLoading(false)
+    fetchProduct()
   }, [id])
 
   if (loading) {

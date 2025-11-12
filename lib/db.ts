@@ -50,10 +50,12 @@ const getDb = (): Database.Database => {
           id TEXT PRIMARY KEY,
           product_id TEXT NOT NULL,
           buyer_pubkey TEXT NOT NULL,
+          seller_pubkey TEXT,
           status TEXT DEFAULT 'pending',
           payment_hash TEXT,
           payment_request TEXT,
           total_sats INTEGER,
+          escrow_held BOOLEAN DEFAULT 1,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (product_id) REFERENCES products(id)
         );
@@ -154,6 +156,7 @@ export const dbHelpers = {
     id: string;
     product_id: string;
     buyer_pubkey: string;
+    seller_pubkey?: string | null;
     status: string;
     payment_hash: string | null;
     payment_request: string | null;
@@ -162,12 +165,13 @@ export const dbHelpers = {
     const db = getDb();
     return db
       .prepare(
-        'INSERT INTO orders (id, product_id, buyer_pubkey, status, payment_hash, payment_request, total_sats) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO orders (id, product_id, buyer_pubkey, seller_pubkey, status, payment_hash, payment_request, total_sats) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       )
       .run(
         order.id,
         order.product_id,
         order.buyer_pubkey,
+        order.seller_pubkey || null,
         order.status,
         order.payment_hash,
         order.payment_request,
@@ -196,6 +200,16 @@ export const dbHelpers = {
     } else {
       return db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
     }
+  },
+
+  releaseEscrow: (id: string) => {
+    const db = getDb();
+    return db.prepare('UPDATE orders SET status = ?, escrow_held = ? WHERE id = ?').run('released', 0, id);
+  },
+
+  refundEscrow: (id: string) => {
+    const db = getDb();
+    return db.prepare('UPDATE orders SET status = ?, escrow_held = ? WHERE id = ?').run('refunded', 0, id);
   },
 
   // Messages

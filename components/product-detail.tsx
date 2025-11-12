@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { LightningPaymentModal } from "@/components/lightning-payment-modal"
+import { LightningInvoiceModal } from "@/components/lightning-invoice-modal"
 import { EscrowChat } from "@/components/escrow-chat"
 import { EscrowStatusBadge } from "@/components/escrow-status-badge"
 
@@ -26,36 +27,165 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   const [escrowStatus, setEscrowStatus] = useState<EscrowStatus>("pending")
   const [purchasing, setPurchasing] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showReleaseModal, setShowReleaseModal] = useState(false)
+  const [showRefundModal, setShowRefundModal] = useState(false)
   const [invoice, setInvoice] = useState("")
 
-  const generateMockInvoice = () => {
-    return `lnbc${product.price}n1p3w5z8dpp5u0lyy0jz2j3k4l5m6n7o8p9q0r1s2t3u4v5w6x7y8z9a0b1c2dsdqqcqzpgxqrrsssp5q9l3z3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3l3lqqq0lqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq`
-  }
+  const [orderId, setOrderId] = useState<string | null>(null)
+  const [buyerPubkey, setBuyerPubkey] = useState<string>("")
+  const [sellerPubkey, setSellerPubkey] = useState<string>("")
+
+  // Get buyer pubkey from localStorage or redirect to registration
+  useEffect(() => {
+    const pubkey = localStorage.getItem('buyer_pubkey')
+    if (!pubkey) {
+      // No buyer profile, redirect to registration
+      if (typeof window !== 'undefined') {
+        const shouldRegister = confirm('Necesitas crear un perfil de comprador para realizar compras. ¿Deseas registrarte ahora?')
+        if (shouldRegister) {
+          window.location.href = '/register/buyer'
+        }
+      }
+      return
+    }
+    setBuyerPubkey(pubkey)
+  }, [])
+
+  // Get seller pubkey - in production this would come from the product/stall owner
+  useEffect(() => {
+    // Try to get from merchant localStorage (if viewing as merchant)
+    const merchantPubkey = localStorage.getItem('merchant_public_key')
+    
+    // For MVP, we use merchant_public_key if available
+    // In production, this would be fetched from the product's stall owner
+    if (merchantPubkey) {
+      setSellerPubkey(merchantPubkey)
+    } else {
+      // Generate a default seller pubkey for demo
+      // In production, this would be fetched from the product API
+      const defaultSellerPubkey = "a".repeat(64) // Mock hex pubkey
+      setSellerPubkey(defaultSellerPubkey)
+      console.warn('[ProductDetail] Using default seller pubkey for demo. In production, fetch from product/stall owner.')
+    }
+  }, [])
 
   const handlePurchase = async () => {
     setPurchasing(true)
     try {
-      const mockInvoice = generateMockInvoice()
-      setInvoice(mockInvoice)
-      setShowPaymentModal(true)
+      // Create order via API
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          product_id: product.id,
+          buyer_pubkey: buyerPubkey,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!data.ok) {
+        throw new Error(data.error || 'Error al crear la orden')
+      }
+
+      // Store order ID
+      setOrderId(data.order_id)
+
+      // Get payment request from response
+      if (data.payment_request) {
+        setInvoice(data.payment_request)
+        setShowPaymentModal(true)
+      } else {
+        throw new Error('No se pudo generar el invoice de pago')
+      }
     } catch (error) {
-      console.error("Error:", error)
+      console.error("Error creating order:", error)
+      alert(error instanceof Error ? error.message : "Error al procesar la compra")
     } finally {
       setPurchasing(false)
     }
   }
 
-  const handlePaymentConfirm = () => {
+  const handlePaymentConfirm = async () => {
     setShowPaymentModal(false)
     setEscrowStatus("paid")
+    
+    // Update order status to paid in LNbits
+    if (orderId) {
+      try {
+        await fetch(`/api/orders/${orderId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            paid: true,
+          }),
+        })
+      } catch (error) {
+        console.error('Error updating order status:', error)
+      }
+    }
   }
 
-  const handleReleasePayment = () => {
-    setEscrowStatus("released")
+  const handleReleasePayment = async (sellerInvoice: string) => {
+    if (!orderId) return
+    
+    try {
+      const response = await fetch(`/api/orders/${orderId}/release`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          seller_payment_request: sellerInvoice,
+          message: 'Buyer confirmed delivery',
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.ok) {
+        setEscrowStatus("released")
+        alert(`✅ ${data.message}\nMonto enviado: ${data.amount_sent} sats`)
+      } else {
+        throw new Error(data.error || 'Error al liberar el pago')
+      }
+    } catch (error) {
+      console.error('Error releasing payment:', error)
+      throw error // Re-throw to be handled by modal
+    }
   }
 
-  const handleCancelTransaction = () => {
-    setEscrowStatus("cancelled")
+  const handleCancelTransaction = async (buyerInvoice: string) => {
+    if (!orderId) return
+    
+    try {
+      const response = await fetch(`/api/orders/${orderId}/refund`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          buyer_payment_request: buyerInvoice,
+          message: 'Seller agreed to refund',
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.ok) {
+        setEscrowStatus("cancelled")
+        alert(`✅ ${data.message}\nMonto reembolsado: ${data.amount_refunded} sats`)
+      } else {
+        throw new Error(data.error || 'Error al cancelar la transacción')
+      }
+    } catch (error) {
+      console.error('Error cancelling transaction:', error)
+      throw error // Re-throw to be handled by modal
+    }
   }
 
   // Show different UI based on escrow status
@@ -153,9 +283,34 @@ export default function ProductDetail({ product }: ProductDetailProps) {
 
         <EscrowChat
           productName={product.name}
-          onRelease={handleReleasePayment}
-          onCancel={handleCancelTransaction}
+          orderId={orderId || ""}
+          buyerPubkey={buyerPubkey}
+          sellerPubkey={sellerPubkey}
+          onRelease={() => setShowReleaseModal(true)}
+          onCancel={() => setShowRefundModal(true)}
           isBuyer={true}
+        />
+
+        {/* Release Escrow Modal - Vendedor genera invoice */}
+        <LightningInvoiceModal
+          isOpen={showReleaseModal}
+          onClose={() => setShowReleaseModal(false)}
+          onSubmit={handleReleasePayment}
+          title="Liberar Fondos al Vendedor"
+          description="Para liberar los fondos en escrow, el vendedor debe generar un invoice Lightning donde quiere recibir el pago."
+          amount={product.price}
+          isRefund={false}
+        />
+
+        {/* Refund Modal - Comprador genera invoice */}
+        <LightningInvoiceModal
+          isOpen={showRefundModal}
+          onClose={() => setShowRefundModal(false)}
+          onSubmit={handleCancelTransaction}
+          title="Reembolsar al Comprador"
+          description="Para devolver los fondos, el comprador debe generar un invoice Lightning donde quiere recibir el reembolso."
+          amount={product.price}
+          isRefund={true}
         />
       </div>
     )

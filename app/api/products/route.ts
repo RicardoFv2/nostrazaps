@@ -66,24 +66,30 @@ export const POST = async (request: NextRequest) => {
 
     dbHelpers.createProduct(product);
 
-    // Optionally create product in LNbits (if stall_id is provided)
+    // Always create product in NostrMarket if stall_id is provided
     if (body.stall_id) {
       try {
-        await createLNbitsProduct({
+        const lnbitsProduct = await createLNbitsProduct({
           stall_id: body.stall_id,
           name: body.name,
           price: body.price_sats,
           categories: body.category ? [body.category] : [],
           images: body.image ? [body.image] : [],
           config: {
-            description: body.description,
+            description: body.description || '',
             currency: 'sat',
           },
         });
-        console.log('Product created in LNbits:', productId);
+        console.log('Product created in NostrMarket:', lnbitsProduct);
+        
+        // Update product ID with NostrMarket ID if available
+        if (lnbitsProduct && typeof lnbitsProduct === 'object' && 'id' in lnbitsProduct) {
+          product.id = (lnbitsProduct as { id: string }).id || productId;
+        }
       } catch (lnbitsError) {
-        console.error('Error creating product in LNbits (non-fatal):', lnbitsError);
-        // Continue even if LNbits creation fails
+        console.error('Error creating product in NostrMarket:', lnbitsError);
+        // For MVP, we'll still return success but log the error
+        // In production, you might want to handle this differently
       }
     }
 
