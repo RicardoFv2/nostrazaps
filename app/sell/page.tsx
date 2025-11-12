@@ -68,12 +68,20 @@ export default function SellPage() {
   const loadProducts = async (stallIdToLoad: string) => {
     try {
       setLoading(true)
+      console.log('[SellPage] Loading products for stall:', stallIdToLoad)
       const response = await fetch(`/api/products/stall/${stallIdToLoad}`)
       const data = await response.json()
 
-      if (data.ok && Array.isArray(data.products)) {
+      console.log('[SellPage] Products response:', data)
+
+      if (data.ok) {
+        // Handle both array and single product responses
+        const productsArray = Array.isArray(data.products) 
+          ? data.products 
+          : (data.products ? [data.products] : [])
+        
         // Transform products from NostrMarket format
-        const transformedProducts = data.products.map((p: any) => ({
+        const transformedProducts = productsArray.map((p: any) => ({
           id: p.id || p.product_id || '',
           name: p.name || '',
           price: p.price || p.config?.price || 0,
@@ -84,22 +92,27 @@ export default function SellPage() {
             ? p.categories[0]
             : 'Otros',
         }))
+        
+        console.log('[SellPage] Transformed products:', transformedProducts)
         setProducts(transformedProducts)
       } else {
+        console.warn('[SellPage] Products response not ok:', data)
         setProducts([])
       }
     } catch (error) {
-      console.error('Error loading products:', error)
+      console.error('[SellPage] Error loading products:', error)
       setProducts([])
     } finally {
       setLoading(false)
     }
   }
 
-  const handleProductCreated = () => {
+  const handleProductCreated = async () => {
     setShowForm(false)
     if (stallId) {
-      loadProducts(stallId)
+      // Agregar un pequeño delay para dar tiempo a NostrMarket de procesar el producto
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      await loadProducts(stallId)
     }
   }
 

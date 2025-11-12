@@ -69,10 +69,18 @@ export const POST = async (request: NextRequest) => {
     // Always create product in NostrMarket if stall_id is provided
     if (body.stall_id) {
       try {
+        console.log('[POST /api/products] Creating product in NostrMarket:', {
+          stall_id: body.stall_id,
+          name: body.name,
+          price: body.price_sats,
+          quantity: body.quantity || 1,
+        });
+        
         const lnbitsProduct = await createLNbitsProduct({
           stall_id: body.stall_id,
           name: body.name,
           price: body.price_sats,
+          quantity: body.quantity || 1,
           categories: body.category ? [body.category] : [],
           images: body.image ? [body.image] : [],
           config: {
@@ -80,16 +88,29 @@ export const POST = async (request: NextRequest) => {
             currency: 'sat',
           },
         });
-        console.log('Product created in NostrMarket:', lnbitsProduct);
+        
+        console.log('[POST /api/products] Product created in NostrMarket:', lnbitsProduct);
         
         // Update product ID with NostrMarket ID if available
         if (lnbitsProduct && typeof lnbitsProduct === 'object' && 'id' in lnbitsProduct) {
-          product.id = (lnbitsProduct as { id: string }).id || productId;
+          const nostrProductId = (lnbitsProduct as { id: string }).id;
+          if (nostrProductId) {
+            product.id = nostrProductId;
+            console.log('[POST /api/products] Updated product ID with NostrMarket ID:', nostrProductId);
+          }
         }
       } catch (lnbitsError) {
-        console.error('Error creating product in NostrMarket:', lnbitsError);
-        // For MVP, we'll still return success but log the error
-        // In production, you might want to handle this differently
+        console.error('[POST /api/products] Error creating product in NostrMarket:', lnbitsError);
+        // Return error to client so they know the product wasn't created in NostrMarket
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'Failed to create product in NostrMarket',
+            message: lnbitsError instanceof Error ? lnbitsError.message : 'Unknown error',
+            product: product, // Still return the local product
+          },
+          { status: 500 }
+        );
       }
     }
 

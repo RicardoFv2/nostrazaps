@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { EscrowsTable, type Escrow } from "@/components/escrows-table"
 import { EscrowChat } from "@/components/escrow-chat"
+import { generateMockNostrPubkey, ensureValidNostrPubkey } from "@/lib/utils"
 import { ShoppingCart, History } from "lucide-react"
 
 const navItems = [
@@ -16,15 +17,25 @@ export default function BuyerDashboard() {
   const [escrows, setEscrows] = useState<Escrow[]>([])
   const [loading, setLoading] = useState(true)
   const [buyerPubkey, setBuyerPubkey] = useState<string>("")
+  const [sellerPubkey, setSellerPubkey] = useState<string | null>(null)
 
-  // Get buyer pubkey from localStorage
+  // Get buyer pubkey from localStorage (ensure it's in hexadecimal format)
   useEffect(() => {
     let pubkey = localStorage.getItem('buyer_pubkey')
-    if (!pubkey) {
-      pubkey = `npub${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`
-      localStorage.setItem('buyer_pubkey', pubkey)
+    // Validate and normalize the key, or generate a new one if invalid
+    const validPubkey = ensureValidNostrPubkey(pubkey, true)
+    if (validPubkey) {
+      // Store the valid key (overwrite if it was invalid)
+      if (pubkey !== validPubkey) {
+        localStorage.setItem('buyer_pubkey', validPubkey)
+      }
+      setBuyerPubkey(validPubkey)
+    } else {
+      // Generate a new valid key
+      const newPubkey = generateMockNostrPubkey()
+      localStorage.setItem('buyer_pubkey', newPubkey)
+      setBuyerPubkey(newPubkey)
     }
-    setBuyerPubkey(pubkey)
   }, [])
 
   // Load orders from API
@@ -69,6 +80,7 @@ export default function BuyerDashboard() {
                 sellerName: "Vendedor",
                 createdAt: new Date(order.created_at).toISOString().split('T')[0],
                 orderId: order.id,
+                sellerPubkey: order.seller_pubkey || null, // Include seller pubkey if available
               }
             })
           )
@@ -160,19 +172,104 @@ export default function BuyerDashboard() {
           </button>
           <div className="bg-white dark:bg-gray-900 rounded-lg border border-border p-6">
             <h2 className="text-2xl font-bold text-foreground mb-6">{selectedEscrow.product}</h2>
-            <EscrowChat
-              productName={selectedEscrow.product}
-              orderId={selectedEscrow.orderId}
-              buyerPubkey={buyerPubkey}
-              buyerName="Tú"
-              sellerName={selectedEscrow.sellerName}
-              onRelease={handleRelease}
-              onCancel={handleCancel}
-              isBuyer={true}
-            />
+            {/* Load seller pubkey from order when escrow is selected */}
+            {selectedEscrow.orderId && (
+              <EscrowChatLoader
+                orderId={selectedEscrow.orderId}
+                buyerPubkey={buyerPubkey}
+                selectedEscrow={selectedEscrow}
+                onRelease={handleRelease}
+                onCancel={handleCancel}
+              />
+            )}
           </div>
         </div>
       )}
     </DashboardLayout>
+  )
+}
+
+// Component to load seller pubkey from order and render EscrowChat
+function EscrowChatLoader({
+  orderId,
+  buyerPubkey,
+  selectedEscrow,
+  onRelease,
+  onCancel,
+}: {
+  orderId: string
+  buyerPubkey: string
+  selectedEscrow: Escrow
+  onRelease: () => void
+  onCancel: () => void
+}) {
+  const [sellerPubkey, setSellerPubkey] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadOrder = async () => {
+      try {
+        setLoading(true)
+        // Get order to retrieve seller_pubkey
+        const response = await fetch(`/api/orders/${orderId}`)
+        const data = await response.json()
+
+        if (data.ok && data.order) {
+          // Get seller pubkey from order, or try to get it from merchant
+          let pubkey = data.order.seller_pubkey
+          
+          if (!pubkey) {
+            // Try to get seller pubkey from merchant
+            try {
+              const merchantResponse = await fetch('/api/merchants')
+              const merchantData = await merchantResponse.json()
+              if (merchantData.ok && merchantData.merchant) {
+                pubkey = merchantData.merchant.public_key
+              }
+            } catch (error) {
+              console.error('Error loading merchant:', error)
+            }
+          }
+
+          // Validate and normalize the key
+          if (pubkey) {
+            const validPubkey = ensureValidNostrPubkey(pubkey, false)
+            if (validPubkey) {
+              setSellerPubkey(validPubkey)
+            } else {
+              console.warn('[EscrowChatLoader] Invalid seller pubkey format:', pubkey.substring(0, 20))
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error loading order:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadOrder()
+  }, [orderId])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  return (
+    <EscrowChat
+      productName={selectedEscrow.product}
+      orderId={orderId}
+      buyerPubkey={buyerPubkey}
+      sellerPubkey={sellerPubkey || undefined}
+      buyerName="Tú"
+      sellerName={selectedEscrow.sellerName}
+      onRelease={onRelease}
+      onCancel={onCancel}
+      isBuyer={true}
+    />
   )
 }

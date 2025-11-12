@@ -12,6 +12,7 @@ export interface Escrow {
   createdAt: string
   orderId?: string
   buyerPubkey?: string
+  sellerPubkey?: string | null
 }
 
 interface EscrowsTableProps {

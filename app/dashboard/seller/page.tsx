@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { EscrowsTable, type Escrow } from "@/components/escrows-table"
 import { EscrowChat } from "@/components/escrow-chat"
+import { generateMockNostrPubkey, ensureValidNostrPubkey } from "@/lib/utils"
 import { Store, TrendingUp, History } from "lucide-react"
 
 const navItems = [
@@ -18,14 +19,46 @@ export default function SellerDashboard() {
   const [loading, setLoading] = useState(true)
   const [sellerPubkey, setSellerPubkey] = useState<string>("")
 
-  // Get seller pubkey from localStorage
+  // Get seller pubkey from merchant API or localStorage (ensure it's in hexadecimal format)
   useEffect(() => {
-    let pubkey = localStorage.getItem('seller_pubkey')
-    if (!pubkey) {
-      pubkey = `npub${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`
-      localStorage.setItem('seller_pubkey', pubkey)
+    const loadSellerPubkey = async () => {
+      try {
+        // First, try to get pubkey from merchant API
+        const merchantResponse = await fetch('/api/merchants')
+        const merchantData = await merchantResponse.json()
+        
+        if (merchantData.ok && merchantData.merchant?.public_key) {
+          // Validate and normalize the merchant's public key
+          const validPubkey = ensureValidNostrPubkey(merchantData.merchant.public_key, false)
+          if (validPubkey) {
+            setSellerPubkey(validPubkey)
+            localStorage.setItem('seller_pubkey', validPubkey)
+            return
+          }
+        }
+      } catch (error) {
+        console.error('Error loading merchant:', error)
+      }
+
+      // Fallback to localStorage or generate new key
+      let pubkey = localStorage.getItem('seller_pubkey')
+      // Validate and normalize the key, or generate a new one if invalid
+      const validPubkey = ensureValidNostrPubkey(pubkey, true)
+      if (validPubkey) {
+        // Store the valid key (overwrite if it was invalid)
+        if (pubkey !== validPubkey) {
+          localStorage.setItem('seller_pubkey', validPubkey)
+        }
+        setSellerPubkey(validPubkey)
+      } else {
+        // Generate a new valid key
+        const newPubkey = generateMockNostrPubkey()
+        localStorage.setItem('seller_pubkey', newPubkey)
+        setSellerPubkey(newPubkey)
+      }
     }
-    setSellerPubkey(pubkey)
+
+    loadSellerPubkey()
   }, [])
 
   // Load orders from API (for seller, we need to get orders for products they own)
@@ -190,17 +223,24 @@ export default function SellerDashboard() {
           </button>
           <div className="bg-white dark:bg-gray-900 rounded-lg border border-border p-6">
             <h2 className="text-2xl font-bold text-foreground mb-6">{selectedEscrow.product}</h2>
-            <EscrowChat
-              productName={selectedEscrow.product}
-              orderId={selectedEscrow.orderId}
-              buyerPubkey={selectedEscrow.buyerPubkey}
-              sellerPubkey={sellerPubkey}
-              buyerName={selectedEscrow.buyerName}
-              sellerName="Tú"
-              onRelease={handleRelease}
-              onCancel={handleCancel}
-              isBuyer={false}
-            />
+            {/* Validate buyer pubkey before rendering EscrowChat */}
+            {selectedEscrow.orderId && selectedEscrow.buyerPubkey ? (
+              <EscrowChat
+                productName={selectedEscrow.product}
+                orderId={selectedEscrow.orderId}
+                buyerPubkey={ensureValidNostrPubkey(selectedEscrow.buyerPubkey, false) || selectedEscrow.buyerPubkey}
+                sellerPubkey={sellerPubkey}
+                buyerName={selectedEscrow.buyerName}
+                sellerName="Tú"
+                onRelease={handleRelease}
+                onCancel={handleCancel}
+                isBuyer={false}
+              />
+            ) : (
+              <div className="text-center text-muted-foreground py-8">
+                <p>Error: No se pudo cargar la información del comprador.</p>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -42,6 +42,7 @@ export interface CreateProductRequest {
   name: string;
   description?: string;
   price_sats: number;
+  quantity?: number;
   category?: string;
   image?: string;
   stall_id?: string;

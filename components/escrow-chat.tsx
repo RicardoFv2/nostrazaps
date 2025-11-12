@@ -172,11 +172,27 @@ export function EscrowChat({
         }
         setMessages([...messages, newMessage])
       } else {
-        throw new Error(data.error || 'Error al enviar el mensaje')
+        // Show more detailed error message
+        const errorMessage = data.error || 'Error al enviar el mensaje'
+        const errorHint = data.hint ? `\n\n${data.hint}` : ''
+        throw new Error(errorMessage + errorHint)
       }
     } catch (error) {
       console.error('Error sending message:', error)
-      alert(error instanceof Error ? error.message : "Error al enviar el mensaje")
+      
+      // Show error message to user
+      let errorMessage = "Error al enviar el mensaje"
+      if (error instanceof Error) {
+        errorMessage = error.message
+        // Check if it's a public key format error
+        if (error.message.includes('Invalid') && error.message.includes('public key')) {
+          errorMessage = "Error: Formato de clave pública inválido. Las claves deben estar en formato hexadecimal (64 caracteres)."
+        } else if (error.message.includes('invalid public key')) {
+          errorMessage = "Error: La clave pública del receptor no es válida o no está registrada en LNbits NostrMarket."
+        }
+      }
+      
+      alert(errorMessage)
       // Restore input value on error
       setInputValue(messageText)
     } finally {
@@ -233,20 +249,30 @@ export function EscrowChat({
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Warning if seller pubkey is missing (for buyer) */}
+        {isBuyer && !sellerPubkey && (
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 mb-4">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+              ⚠️ No se pudo cargar la clave pública del vendedor. Los mensajes se guardarán localmente pero no se enviarán por Nostr.
+            </p>
+          </div>
+        )}
+
         {/* Input */}
         <div className="flex gap-2">
           <Input
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-            placeholder="Escribe un mensaje..."
+            placeholder={isBuyer && !sellerPubkey ? "Cargando clave del vendedor..." : "Escribe un mensaje..."}
             className="bg-background border-border"
+            disabled={isBuyer && !sellerPubkey}
           />
           <Button
             onClick={handleSendMessage}
-            disabled={loading || !orderId}
+            disabled={loading || !orderId || (isBuyer && !sellerPubkey)}
             size="sm"
-            className="bg-yellow-400 hover:bg-yellow-500 text-black font-semibold px-3"
+            className="bg-yellow-400 hover:bg-yellow-500 text-black font-semibold px-3 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />

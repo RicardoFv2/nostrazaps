@@ -3,7 +3,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { dbHelpers } from '@/lib/db';
-import { createLightningInvoice } from '@/lib/lnbits';
+import { createLightningInvoice, getMerchant } from '@/lib/lnbits';
+import { ensureValidNostrPubkey } from '@/lib/utils';
 import type { CreateOrderRequest, CreateOrderResponse, Order } from '@/types';
 import { randomUUID } from 'crypto';
 
@@ -103,6 +104,26 @@ export const POST = async (request: NextRequest) => {
     // Generate order ID
     const orderId = randomUUID();
 
+    // Get seller pubkey from merchant (for messages and escrow)
+    let sellerPubkey: string | null = null;
+    try {
+      console.log('[POST /api/orders] Getting seller pubkey from merchant...');
+      const merchant = await getMerchant() as { public_key?: string } | undefined;
+      if (merchant?.public_key) {
+        // Validate and normalize the merchant's public key
+        const validPubkey = ensureValidNostrPubkey(merchant.public_key, false);
+        if (validPubkey) {
+          sellerPubkey = validPubkey;
+          console.log('[POST /api/orders] Seller pubkey retrieved from merchant:', sellerPubkey.substring(0, 20) + '...');
+        } else {
+          console.warn('[POST /api/orders] Invalid merchant pubkey format:', merchant.public_key.substring(0, 20) + '...');
+        }
+      }
+    } catch (merchantError) {
+      console.error('[POST /api/orders] Error getting merchant (non-fatal):', merchantError);
+      // Continue without seller pubkey - order can still be created
+    }
+
     // Generate Lightning invoice using LNbits API
     let paymentRequest: string | null = null;
     let paymentHash: string | null = null;
@@ -145,11 +166,12 @@ export const POST = async (request: NextRequest) => {
       );
     }
 
-    // Create order in database
+    // Create order in database (include seller_pubkey if available)
     const order: Order = {
       id: orderId,
       product_id: body.product_id,
       buyer_pubkey: body.buyer_pubkey,
+      seller_pubkey: sellerPubkey,
       status: 'pending',
       payment_hash: paymentHash,
       payment_request: paymentRequest,

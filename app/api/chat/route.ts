@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbHelpers } from '@/lib/db';
 import { sendMessage as sendLNbitsMessage, getMessages as getLNbitsMessages } from '@/lib/lnbits';
+import { ensureValidNostrPubkey } from '@/lib/utils';
 import type { CreateMessageRequest, CreateMessageResponse, Message, Order } from '@/types';
 import { randomUUID } from 'crypto';
 
@@ -212,15 +213,44 @@ export const POST = async (request: NextRequest) => {
       );
     }
 
+    // Normalize and validate public keys before sending to LNbits
+    // LNbits NostrMarket requires keys in hexadecimal format (64 hex characters)
+    const normalizedSender = ensureValidNostrPubkey(body.sender, false);
+    const normalizedReceiver = ensureValidNostrPubkey(body.receiver, false);
+
+    if (!normalizedSender) {
+      console.error(`[POST /api/chat] Invalid sender pubkey format: ${body.sender.substring(0, 20)}...`);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Invalid sender public key format. Expected 64-character hexadecimal string.',
+          hint: 'LNbits NostrMarket requires public keys in hexadecimal format, not bech32 (npub).',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!normalizedReceiver) {
+      console.error(`[POST /api/chat] Invalid receiver pubkey format: ${body.receiver.substring(0, 20)}...`);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Invalid receiver public key format. Expected 64-character hexadecimal string.',
+          hint: 'LNbits NostrMarket requires public keys in hexadecimal format, not bech32 (npub).',
+        },
+        { status: 400 }
+      );
+    }
+
     // Generate message ID
     const messageId = randomUUID();
 
-    // Create message in database
+    // Create message in database (store normalized keys)
     const message: Message = {
       id: messageId,
       order_id: body.order_id,
-      sender: body.sender,
-      receiver: body.receiver,
+      sender: normalizedSender,
+      receiver: normalizedReceiver,
       content: content,
       timestamp: new Date().toISOString(),
     };
@@ -228,18 +258,18 @@ export const POST = async (request: NextRequest) => {
     dbHelpers.createMessage(message);
     console.log(`[POST /api/chat] Message saved to database: ${messageId}`);
 
-    // Send message via LNbits Nostr
+    // Send message via LNbits Nostr (use normalized keys)
     let lnbitsSendSuccess = false;
     try {
-      console.log(`[POST /api/chat] Sending message via LNbits Nostr to: ${body.receiver.substring(0, 20)}...`);
+      console.log(`[POST /api/chat] Sending message via LNbits Nostr to: ${normalizedReceiver.substring(0, 20)}...`);
       await sendLNbitsMessage({
         message: content,
-        public_key: body.receiver,
+        public_key: normalizedReceiver, // Use normalized key
       });
       lnbitsSendSuccess = true;
       console.log(`[POST /api/chat] Message sent successfully via LNbits Nostr: ${messageId}`);
     } catch (lnbitsError) {
-      console.error(`[POST /api/chat] Error sending message via LNbits (non-fatal):`, lnbitsError);
+      console.error(`[POST /api/chat] Error sending message via LNbits:`, lnbitsError);
       
       // Check if it's a critical error
       if (lnbitsError instanceof Error) {
@@ -247,6 +277,19 @@ export const POST = async (request: NextRequest) => {
         if (lnbitsError.message.includes('403') || lnbitsError.message.includes('forbidden')) {
           console.warn(
             `[POST /api/chat] Permission denied in LNbits. Message saved locally but not sent via Nostr.`
+          );
+        } else if (lnbitsError.message.includes('invalid public key') || lnbitsError.message.includes('500')) {
+          // If it's an invalid public key error, return a more helpful error
+          console.error(`[POST /api/chat] Invalid public key error from LNbits. Receiver key: ${normalizedReceiver.substring(0, 20)}...`);
+          return NextResponse.json(
+            {
+              ok: false,
+              error: 'Failed to send message via Nostr: Invalid public key',
+              message: lnbitsError.message,
+              hint: 'The receiver public key may not be valid or registered in LNbits NostrMarket.',
+              lnbits_error: lnbitsError.message,
+            },
+            { status: 400 }
           );
         } else {
           // For other errors (404, network errors, etc.), we can still continue

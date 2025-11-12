@@ -25,6 +25,7 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
     name: "",
     description: "",
     price: "",
+    quantity: "1",
     category: CATEGORIES[0],
     image: null as File | null,
     stall_id: "",
@@ -125,6 +126,7 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
           name: formData.name,
           description: formData.description,
           price_sats: parseInt(formData.price, 10),
+          quantity: parseInt(formData.quantity, 10) || 1,
           category: formData.category,
           image: imageUrl,
           stall_id: stallId,
@@ -137,12 +139,14 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
         throw new Error(data.error || 'Error al publicar el producto')
       }
 
+      console.log('[ProductForm] Product created successfully:', data.product)
+      
       alert("Producto publicado exitosamente!")
-      setFormData({ name: "", description: "", price: "", category: CATEGORIES[0], image: null, stall_id: "" })
+      setFormData({ name: "", description: "", price: "", quantity: "1", category: CATEGORIES[0], image: null, stall_id: "" })
       
       // Callback para notificar que se creó el producto
       if (onProductCreated) {
-        onProductCreated()
+        await onProductCreated()
       } else {
         router.push('/marketplace')
       }
@@ -212,20 +216,33 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-foreground mb-2">Categoría</label>
-          <select
-            name="category"
-            value={formData.category}
+          <label className="block text-sm font-semibold text-foreground mb-2">Cantidad</label>
+          <Input
+            name="quantity"
+            type="number"
+            value={formData.quantity}
             onChange={handleChange}
-            className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-          >
-            {CATEGORIES.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
+            placeholder="1"
+            min="1"
+            required
+          />
         </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-semibold text-foreground mb-2">Categoría</label>
+        <select
+          name="category"
+          value={formData.category}
+          onChange={handleChange}
+          className="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          {CATEGORIES.map((cat) => (
+            <option key={cat} value={cat}>
+              {cat}
+            </option>
+          ))}
+        </select>
       </div>
 
       {!loadingStalls && stalls.length > 0 && (

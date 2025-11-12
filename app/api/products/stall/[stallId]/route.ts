@@ -29,11 +29,32 @@ export const GET = async (
 
     // Get products from NostrMarket
     const products = await getProductsByStall(stallId, pending);
+    
+    console.log(`[GET /api/products/stall/${stallId}] Products received:`, {
+      type: typeof products,
+      isArray: Array.isArray(products),
+      count: Array.isArray(products) ? products.length : (products ? 1 : 0),
+    });
+
+    // Handle different response formats from NostrMarket
+    let productsArray: unknown[] = [];
+    if (Array.isArray(products)) {
+      productsArray = products;
+    } else if (products && typeof products === 'object') {
+      // Check if it's an object with a products array
+      if ('products' in products && Array.isArray((products as { products: unknown[] }).products)) {
+        productsArray = (products as { products: unknown[] }).products;
+      } else {
+        // Single product object
+        productsArray = [products];
+      }
+    }
 
     return NextResponse.json({
       ok: true,
-      products: Array.isArray(products) ? products : [products],
+      products: productsArray,
       stall_id: stallId,
+      count: productsArray.length,
     });
   } catch (error) {
     console.error('[GET /api/products/stall/[stallId]] Error fetching products:', error);

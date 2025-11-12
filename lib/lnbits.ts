@@ -108,6 +108,7 @@ export const createProduct = async (data: ProductData): Promise<unknown> => {
     stall_id: data.stall_id,
     name: data.name,
     price: data.price,
+    quantity: data.quantity,
   });
   
   try {
@@ -116,7 +117,13 @@ export const createProduct = async (data: ProductData): Promise<unknown> => {
       throw new Error('Missing required fields: stall_id, name, and price are required');
     }
 
-    const response = await makeRequest('/product', 'POST', data);
+    // Ensure quantity is set (default to 1 if not provided)
+    const productData = {
+      ...data,
+      quantity: data.quantity ?? 1,
+    };
+
+    const response = await makeRequest('/product', 'POST', productData);
     console.log('[createProduct] Product created successfully');
     return response;
   } catch (error) {
@@ -602,7 +609,11 @@ export const getProductsByStall = async (
       : `/stall/product/${stallId}`;
 
     const response = await makeRequest(endpoint, 'GET');
-    console.log('[getProductsByStall] Products retrieved successfully');
+    console.log('[getProductsByStall] Products retrieved successfully:', {
+      type: typeof response,
+      isArray: Array.isArray(response),
+      response: response,
+    });
     return response;
   } catch (error) {
     console.error('[getProductsByStall] Error getting products by stall:', error);
