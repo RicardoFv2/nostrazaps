@@ -13,6 +13,7 @@ interface Product {
   image: string
   description: string
   category: string
+  quantity?: number
 }
 
 export default function ProductPage({ params }: { params: Promise<{ id: string }> }) {
@@ -33,9 +34,14 @@ export default function ProductPage({ params }: { params: Promise<{ id: string }
               id: foundProduct.id,
               name: foundProduct.name,
               price: foundProduct.price_sats || foundProduct.price || 0,
-              image: foundProduct.image || "/placeholder.svg",
-              description: foundProduct.description || "",
-              category: foundProduct.category || "Otros",
+              image: Array.isArray(foundProduct.images) && foundProduct.images.length > 0
+                ? foundProduct.images[0]
+                : (foundProduct.image || "/placeholder.svg"),
+              description: foundProduct.description || foundProduct.config?.description || "",
+              category: Array.isArray(foundProduct.categories) && foundProduct.categories.length > 0
+                ? foundProduct.categories[0]
+                : (foundProduct.category || "Otros"),
+              quantity: foundProduct.quantity !== undefined ? foundProduct.quantity : undefined,
             })
           } else {
             setProduct(null)

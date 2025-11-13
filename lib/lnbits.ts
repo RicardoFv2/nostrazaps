@@ -732,6 +732,57 @@ export const getProduct = async (productId: string): Promise<unknown> => {
 };
 
 /**
+ * Update a product in LNbits NostrMarket
+ * PATCH /nostrmarket/api/v1/product/{product_id}
+ * @param productId Product ID to update
+ * @param data Product data to update (stall_id, name, price, categories, images, config)
+ * @returns Updated product object
+ */
+export const updateProduct = async (productId: string, data: Partial<ProductData>): Promise<unknown> => {
+  console.log('[updateProduct] Updating product in LNbits:', {
+    product_id: productId,
+    name: data.name,
+    price: data.price,
+  });
+  
+  try {
+    if (!productId) {
+      throw new Error('Product ID is required');
+    }
+
+    const response = await makeRequest(`/product/${productId}`, 'PATCH', data);
+    console.log('[updateProduct] Product updated successfully');
+    return response;
+  } catch (error) {
+    console.error('[updateProduct] Error updating product:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a product from LNbits NostrMarket
+ * DELETE /nostrmarket/api/v1/product/{product_id}
+ * @param productId Product ID to delete
+ * @returns Success confirmation
+ */
+export const deleteProduct = async (productId: string): Promise<unknown> => {
+  console.log('[deleteProduct] Deleting product from LNbits:', productId);
+  
+  try {
+    if (!productId) {
+      throw new Error('Product ID is required');
+    }
+
+    const response = await makeRequest(`/product/${productId}`, 'DELETE');
+    console.log('[deleteProduct] Product deleted successfully');
+    return response;
+  } catch (error) {
+    console.error('[deleteProduct] Error deleting product:', error);
+    throw error;
+  }
+};
+
+/**
  * Get products by stall ID
  * GET /nostrmarket/api/v1/stall/product/{stall_id}
  * Retrieves all products for a specific stall.

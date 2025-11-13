@@ -12,6 +12,7 @@ interface Product {
   price: number
   image: string
   category: string
+  quantity?: number
 }
 
 export default function MarketplacePage() {
@@ -32,8 +33,13 @@ export default function MarketplacePage() {
             id: p.id,
             name: p.name,
             price: p.price_sats || p.price || 0,
-            image: p.image || "/placeholder.svg",
-            category: p.category || "Otros",
+            image: Array.isArray(p.images) && p.images.length > 0 
+              ? p.images[0] 
+              : (p.image || "/placeholder.svg"),
+            category: Array.isArray(p.categories) && p.categories.length > 0
+              ? p.categories[0]
+              : (p.category || "Otros"),
+            quantity: p.quantity !== undefined ? p.quantity : undefined,
           }))
           setProducts(transformedProducts)
         } else {

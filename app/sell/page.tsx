@@ -8,7 +8,7 @@ import ProductForm from "@/components/product-form"
 import ProductCard from "@/components/product-card"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import { Plus } from "lucide-react"
+import { Plus, Edit, Trash2 } from "lucide-react"
 
 interface Product {
   id: string
@@ -16,6 +16,7 @@ interface Product {
   price: number
   image: string
   category: string
+  quantity?: number
 }
 
 export default function SellPage() {
@@ -23,6 +24,8 @@ export default function SellPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null)
   const [stallId, setStallId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -91,6 +94,7 @@ export default function SellPage() {
           category: Array.isArray(p.categories) && p.categories.length > 0
             ? p.categories[0]
             : 'Otros',
+          quantity: p.quantity !== undefined ? p.quantity : undefined,
         }))
         
         console.log('[SellPage] Transformed products:', transformedProducts)
@@ -109,10 +113,45 @@ export default function SellPage() {
 
   const handleProductCreated = async () => {
     setShowForm(false)
+    setEditingProduct(null)
     if (stallId) {
       // Agregar un pequeño delay para dar tiempo a NostrMarket de procesar el producto
       await new Promise(resolve => setTimeout(resolve, 1000))
       await loadProducts(stallId)
+    }
+  }
+
+  const handleEditProduct = (product: Product) => {
+    setEditingProduct(product)
+    setShowForm(true)
+  }
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar este producto? Esta acción no se puede deshacer.')) {
+      return
+    }
+
+    setDeletingProductId(productId)
+    try {
+      const response = await fetch(`/api/products/${productId}`, {
+        method: 'DELETE',
+      })
+
+      const data = await response.json()
+
+      if (!data.ok) {
+        throw new Error(data.error || 'Error al eliminar el producto')
+      }
+
+      alert('Producto eliminado exitosamente')
+      if (stallId) {
+        await loadProducts(stallId)
+      }
+    } catch (error) {
+      console.error('Error deleting product:', error)
+      alert(error instanceof Error ? error.message : 'Error al eliminar el producto')
+    } finally {
+      setDeletingProductId(null)
     }
   }
 
@@ -154,7 +193,14 @@ export default function SellPage() {
 
         {showForm ? (
           <div className="mb-8">
-            <ProductForm onProductCreated={handleProductCreated} />
+            <ProductForm 
+              product={editingProduct || undefined}
+              onProductCreated={handleProductCreated}
+              onCancel={() => {
+                setShowForm(false)
+                setEditingProduct(null)
+              }}
+            />
           </div>
         ) : (
           <>
@@ -165,7 +211,32 @@ export default function SellPage() {
             ) : products.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {products.map((product) => (
-                  <ProductCard key={product.id} product={product} />
+                  <div key={product.id} className="relative group">
+                    <ProductCard product={product} />
+                    <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleEditProduct(product)}
+                        className="h-8 w-8 p-0 bg-blue-500 hover:bg-blue-600 text-white"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleDeleteProduct(product.id)}
+                        disabled={deletingProductId === product.id}
+                        className="h-8 w-8 p-0 bg-red-500 hover:bg-red-600 text-white"
+                      >
+                        {deletingProductId === product.id ? (
+                          <Spinner className="w-4 h-4" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : (

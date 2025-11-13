@@ -10,11 +10,22 @@ import { Spinner } from "@/components/ui/spinner"
 
 const CATEGORIES = ["Ropa", "Repuestos", "Encomiendas", "Artículos de segunda mano", "Otros"]
 
-interface ProductFormProps {
-  onProductCreated?: () => void
+interface Product {
+  id: string
+  name: string
+  price: number
+  image: string
+  category: string
+  description?: string
 }
 
-export default function ProductForm({ onProductCreated }: ProductFormProps) {
+interface ProductFormProps {
+  product?: Product
+  onProductCreated?: () => void
+  onCancel?: () => void
+}
+
+export default function ProductForm({ product, onProductCreated, onCancel }: ProductFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [stalls, setStalls] = useState<Array<{ id: string; name: string }>>([])
@@ -22,15 +33,15 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
   const [isMerchant, setIsMerchant] = useState(false)
   const [checkingMerchant, setCheckingMerchant] = useState(true)
   const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    price: "",
+    name: product?.name || "",
+    description: product?.description || "",
+    price: product?.price?.toString() || "",
     quantity: "1",
-    category: CATEGORIES[0],
+    category: product?.category || CATEGORIES[0],
     image: null as File | null,
     stall_id: "",
   })
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(product?.image || null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Check if user is a merchant
@@ -148,46 +159,60 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
         throw new Error('No se encontró el ID de la tienda. Por favor, crea una tienda primero.')
       }
 
-      // Create product directly in NostrMarket via API
-      const response = await fetch('/api/products', {
-        method: 'POST',
+      // Determine if we're creating or updating
+      const isEditing = !!product?.id
+      const url = isEditing ? `/api/products/${product.id}` : '/api/products'
+      const method = isEditing ? 'PATCH' : 'POST'
+
+      // Prepare request body
+      const requestBody: any = {
+        name: formData.name,
+        description: formData.description,
+        price_sats: parseInt(formData.price, 10),
+        quantity: parseInt(formData.quantity, 10) || 1,
+        category: formData.category,
+        stall_id: stallId,
+      }
+
+      // Only include image if it's a new file or we're creating
+      if (imageUrl) {
+        requestBody.image = imageUrl
+      }
+
+      // Create or update product in NostrMarket via API
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          name: formData.name,
-          description: formData.description,
-          price_sats: parseInt(formData.price, 10),
-          quantity: parseInt(formData.quantity, 10) || 1,
-          category: formData.category,
-          image: imageUrl,
-          stall_id: stallId,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       const data = await response.json()
 
       if (!data.ok) {
-        throw new Error(data.error || 'Error al publicar el producto')
+        throw new Error(data.error || (isEditing ? 'Error al actualizar el producto' : 'Error al publicar el producto'))
       }
 
-      console.log('[ProductForm] Product created successfully:', data.product)
+      console.log(`[ProductForm] Product ${isEditing ? 'updated' : 'created'} successfully:`, data.product)
       
       // Clean up preview URL
       if (imagePreview) {
         URL.revokeObjectURL(imagePreview)
       }
       
-      alert("Producto publicado exitosamente!")
+      alert(isEditing ? "Producto actualizado exitosamente!" : "Producto publicado exitosamente!")
       
-      // Reset form and file input
-      setFormData({ name: "", description: "", price: "", quantity: "1", category: CATEGORIES[0], image: null, stall_id: "" })
-      setImagePreview(null)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ""
+      // Reset form and file input only if creating
+      if (!isEditing) {
+        setFormData({ name: "", description: "", price: "", quantity: "1", category: CATEGORIES[0], image: null, stall_id: "" })
+        setImagePreview(null)
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ""
+        }
       }
       
-      // Callback para notificar que se creó el producto
+      // Callback para notificar que se creó/actualizó el producto
       if (onProductCreated) {
         await onProductCreated()
       } else {
@@ -327,15 +352,32 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
         )}
       </div>
 
-      <Button type="submit" disabled={loading} className="w-full h-12">
-        {loading ? (
-          <>
-            <Spinner className="mr-2 h-4 w-4" /> Publicando...
-          </>
-        ) : (
-          "Publicar Producto"
+      <div className="flex gap-3">
+        {onCancel && (
+          <Button 
+            type="button" 
+            onClick={onCancel}
+            variant="outline"
+            disabled={loading}
+            className="flex-1 h-12"
+          >
+            Cancelar
+          </Button>
         )}
-      </Button>
+        <Button 
+          type="submit" 
+          disabled={loading || loadingStalls} 
+          className={`${onCancel ? 'flex-1' : 'w-full'} h-12`}
+        >
+          {loading ? (
+            <>
+              <Spinner className="mr-2 h-4 w-4" /> {product ? 'Actualizando...' : 'Publicando...'}
+            </>
+          ) : (
+            product ? "Actualizar Producto" : "Publicar Producto"
+          )}
+        </Button>
+      </div>
     </form>
   )
 }

@@ -16,6 +16,7 @@ interface Product {
   image: string
   description: string
   category: string
+  quantity?: number
 }
 
 interface ProductDetailProps {
@@ -289,7 +290,15 @@ export default function ProductDetail({ product }: ProductDetailProps) {
               {product.category}
             </div>
             <h1 className="text-4xl font-bold text-foreground mb-2">{product.name}</h1>
-            <p className="text-3xl font-bold text-yellow-400 mb-6">{product.price.toLocaleString()} sats</p>
+            <p className="text-3xl font-bold text-yellow-400 mb-4">{product.price.toLocaleString()} sats</p>
+            {product.quantity !== undefined && (
+              <div className="mb-4">
+                <span className="text-sm text-muted-foreground">Cantidad disponible: </span>
+                <span className={`text-lg font-semibold ${product.quantity > 0 ? "text-green-500" : "text-red-500"}`}>
+                  {product.quantity}
+                </span>
+              </div>
+            )}
             <EscrowStatusBadge status="paid" />
           </div>
         </div>
@@ -346,7 +355,15 @@ export default function ProductDetail({ product }: ProductDetailProps) {
             {product.category}
           </div>
           <h1 className="text-4xl font-bold text-foreground mb-2">{product.name}</h1>
-          <p className="text-3xl font-bold text-yellow-400 mb-6">{product.price.toLocaleString()} sats</p>
+          <p className="text-3xl font-bold text-yellow-400 mb-4">{product.price.toLocaleString()} sats</p>
+          {product.quantity !== undefined && (
+            <div className="mb-4">
+              <span className="text-sm text-muted-foreground">Cantidad disponible: </span>
+              <span className={`text-lg font-semibold ${product.quantity > 0 ? "text-green-500" : "text-red-500"}`}>
+                {product.quantity}
+              </span>
+            </div>
+          )}
           <p className="text-foreground text-lg leading-relaxed mb-8 text-muted-foreground">{product.description}</p>
           <EscrowStatusBadge status="pending" />
         </div>
