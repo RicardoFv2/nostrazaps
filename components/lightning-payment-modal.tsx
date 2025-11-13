@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { QRCodeSVG } from "qrcode.react"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,13 +10,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Check, Copy } from "lucide-react"
+import { Check, Copy, Loader2 } from "lucide-react"
 
 interface LightningPaymentModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   invoice: string
   amount: number
+  orderId: string | null
   onPaymentConfirm: () => void
 }
 
@@ -25,9 +26,13 @@ export function LightningPaymentModal({
   onOpenChange,
   invoice,
   amount,
+  orderId,
   onPaymentConfirm,
 }: LightningPaymentModalProps) {
   const [copied, setCopied] = useState(false)
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false)
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const hasDetectedPaymentRef = useRef(false)
 
   const handleCopyInvoice = async () => {
     await navigator.clipboard.writeText(invoice)
@@ -35,11 +40,114 @@ export function LightningPaymentModal({
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Check payment status directly in LNbits using payment_hash
+  const checkPaymentStatus = async (): Promise<boolean> => {
+    if (!orderId) return false
+
+    try {
+      // First, get the order to obtain payment_hash
+      const orderResponse = await fetch(`/api/orders/${orderId}`)
+      const orderData = await orderResponse.json()
+
+      if (!orderData.ok || !orderData.order) {
+        return false
+      }
+
+      const order = orderData.order
+      const paymentHash = order.payment_hash
+
+      // If no payment_hash, fallback to checking order status
+      if (!paymentHash) {
+        console.log('[checkPaymentStatus] No payment_hash found, checking order status')
+        return order.status === 'paid' || order.status === 'released'
+      }
+
+      // Check payment status directly in LNbits
+      console.log('[checkPaymentStatus] Checking payment status for hash:', paymentHash.substring(0, 16) + '...')
+      const paymentResponse = await fetch(`/api/payments/check?payment_hash=${encodeURIComponent(paymentHash)}`)
+      const paymentData = await paymentResponse.json()
+
+      console.log('[checkPaymentStatus] Payment check response:', {
+        ok: paymentData.ok,
+        paid: paymentData.paid,
+        hasDetails: !!paymentData.details,
+      })
+
+      if (paymentData.ok && paymentData.paid) {
+        console.log('[checkPaymentStatus] ✅ Payment confirmed as paid in LNbits')
+        
+        // Update order status if payment is confirmed but order status is still pending
+        if (order.status === 'pending') {
+          console.log('[checkPaymentStatus] Updating order status to paid...')
+          try {
+            const updateResponse = await fetch(`/api/orders/${orderId}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                paid: true,
+              }),
+            })
+            const updateData = await updateResponse.json()
+            console.log('[checkPaymentStatus] Order status update result:', updateData.ok)
+          } catch (updateError) {
+            console.error('[checkPaymentStatus] Error updating order status:', updateError)
+          }
+        }
+        
+        return true
+      }
+
+      console.log('[checkPaymentStatus] Payment not yet confirmed as paid')
+      return false
+    } catch (error) {
+      console.error('Error checking payment status:', error)
+      return false
+    }
+  }
+
+  // Start polling for payment status when modal opens
+  useEffect(() => {
+    if (open && orderId && !hasDetectedPaymentRef.current) {
+      setIsCheckingPayment(true)
+      
+      // Start polling every 2 seconds
+      pollingIntervalRef.current = setInterval(async () => {
+        const isPaid = await checkPaymentStatus()
+        
+        if (isPaid && !hasDetectedPaymentRef.current) {
+          hasDetectedPaymentRef.current = true
+          setIsCheckingPayment(false)
+          
+          // Stop polling
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = null
+          }
+          
+          // Automatically confirm payment
+          onPaymentConfirm()
+        }
+      }, 2000) // Check every 2 seconds
+    }
+
+    // Cleanup: stop polling when modal closes
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+      hasDetectedPaymentRef.current = false
+      setIsCheckingPayment(false)
+    }
+  }, [open, orderId, onPaymentConfirm])
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-2xl">Paga con Lightning ⚡</AlertDialogTitle>
+          <AlertDialogTitle className="text-2xl">Paga con Lightning en TurboZaps ⚡</AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-4 text-center">
               {/* Amount */}
@@ -84,17 +192,33 @@ export function LightningPaymentModal({
               {/* Info Box */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-xs text-blue-900">
-                  Tu dinero está asegurado. Una vez que pagues, quedará guardado en un lugar seguro hasta que confirmes
+                  Tu dinero está asegurado con TurboZaps. Una vez que pagues, quedará guardado en un lugar seguro hasta que confirmes
                   que recibiste el producto.
                 </p>
               </div>
 
+              {/* Payment Status Indicator */}
+              {isCheckingPayment && (
+                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Verificando pago automáticamente...</span>
+                </div>
+              )}
+
               {/* Confirmation Button */}
               <Button
                 onClick={onPaymentConfirm}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold h-11"
+                disabled={isCheckingPayment}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold h-11 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Ya pagué ✓
+                {isCheckingPayment ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Verificando...
+                  </>
+                ) : (
+                  'Ya pagué ✓'
+                )}
               </Button>
             </div>
           </AlertDialogDescription>

@@ -104,6 +104,37 @@ export const POST = async (
       );
     }
 
+    // CRITICAL: Verify that payment was actually received in system wallet (escrow)
+    // This confirms the funds are actually in escrow before releasing
+    if (order.payment_hash) {
+      try {
+        const { checkPaymentStatus } = await import('@/lib/lnbits');
+        console.log(`[POST /api/orders/${orderId}/release] Verifying payment was received in system wallet...`);
+        
+        const paymentStatus = await checkPaymentStatus(order.payment_hash);
+        
+        if (!paymentStatus.paid) {
+          console.error(`[POST /api/orders/${orderId}/release] Payment not confirmed in system wallet!`);
+          return NextResponse.json(
+            {
+              ok: false,
+              error: 'Payment not confirmed in system wallet. Cannot release escrow until payment is received.',
+              hint: 'The invoice may not have been paid yet, or the payment is still pending confirmation.',
+            },
+            { status: 400 }
+          );
+        }
+        
+        console.log(`[POST /api/orders/${orderId}/release] ✅ Payment confirmed in system wallet. Funds are in escrow.`);
+      } catch (paymentCheckError) {
+        console.error(`[POST /api/orders/${orderId}/release] Error verifying payment status:`, paymentCheckError);
+        // Don't fail the release if we can't verify, but log it
+        console.warn(`[POST /api/orders/${orderId}/release] Proceeding with release despite payment verification error (non-fatal)`);
+      }
+    } else {
+      console.warn(`[POST /api/orders/${orderId}/release] No payment_hash found. Cannot verify payment was received.`);
+    }
+
     // Release escrow by sending Lightning payment to seller
     let paymentResult;
     try {

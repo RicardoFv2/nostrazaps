@@ -3,8 +3,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { dbHelpers } from '@/lib/db';
-import { getOrderStatus as getLNbitsOrderStatus } from '@/lib/lnbits';
-import type { Order, OrderStatus } from '@/types';
+import { checkPaymentStatus } from '@/lib/lnbits';
+import type { Order } from '@/types';
 
 // GET /api/orders/[id] - Get order by ID
 export const GET = async (
@@ -43,62 +43,39 @@ export const GET = async (
       );
     }
 
-    // Sync with LNbits to get latest status
-    if (sync) {
+    // Sync payment status with LNbits if order has a payment_hash
+    // Note: We don't sync with NostrMarket because orders are created locally,
+    // not in NostrMarket. Instead, we check payment status directly using payment_hash.
+    if (sync && order.payment_hash && order.status === 'pending') {
       try {
-        console.log(`[GET /api/orders/${orderId}] Syncing with LNbits...`);
-        const lnbitsOrder = await getLNbitsOrderStatus(orderId);
+        console.log(`[GET /api/orders/${orderId}] Checking payment status in LNbits...`);
+        const paymentStatus = await checkPaymentStatus(order.payment_hash);
         
-        // Determine new status based on LNbits order state
-        let newStatus: OrderStatus = order.status;
-        let shouldUpdate = false;
-
-        if (lnbitsOrder.paid && lnbitsOrder.shipped) {
-          // Order is paid and shipped - escrow should be released
-          if (order.status !== 'released') {
-            newStatus = 'released';
-            shouldUpdate = true;
-          }
-        } else if (lnbitsOrder.paid && !lnbitsOrder.shipped) {
-          // Order is paid but not shipped yet
-          if (order.status === 'pending') {
-            newStatus = 'paid';
-            shouldUpdate = true;
-          }
-        }
-
-        // Update order if status changed
-        if (shouldUpdate) {
-          console.log(`[GET /api/orders/${orderId}] Updating order status: ${order.status} -> ${newStatus}`);
+        // Update order status if payment is confirmed
+        if (paymentStatus.paid && order.status === 'pending') {
+          console.log(`[GET /api/orders/${orderId}] ✅ Payment confirmed in system wallet! Funds are now in escrow.`);
+          console.log(`[GET /api/orders/${orderId}] Updating order status: pending -> paid (escrow_held: true)`);
           
-          dbHelpers.updateOrderStatusAndPayment(
-            orderId,
-            newStatus,
-            lnbitsOrder.payment_hash || order.payment_hash || null,
-            lnbitsOrder.payment_request || order.payment_request || null
-          );
-
-          // Update local order object
-          order.status = newStatus;
-          order.payment_hash = lnbitsOrder.payment_hash || order.payment_hash;
-          order.payment_request = lnbitsOrder.payment_request || order.payment_request;
-        } else if (lnbitsOrder.payment_hash && !order.payment_hash) {
-          // Update payment info if we got it from LNbits but don't have it locally
-          dbHelpers.updateOrderStatusAndPayment(
-            orderId,
-            order.status,
-            lnbitsOrder.payment_hash,
-            lnbitsOrder.payment_request || order.payment_request || null
-          );
-          order.payment_hash = lnbitsOrder.payment_hash;
-          order.payment_request = lnbitsOrder.payment_request || order.payment_request;
+          dbHelpers.updateOrderStatus(orderId, 'paid');
+          order.status = 'paid';
+          // Ensure escrow_held is set to true when payment is confirmed
+          // The order should already have escrow_held=true by default, but we ensure it
+          if (order.escrow_held === false || order.escrow_held === null || order.escrow_held === 0) {
+            // Update escrow_held to true using direct SQL
+            const getDb = (await import('@/lib/db')).default;
+            const db = getDb();
+            db.prepare('UPDATE orders SET escrow_held = 1 WHERE id = ?').run(orderId);
+            order.escrow_held = true;
+          }
         }
 
-        console.log(`[GET /api/orders/${orderId}] Sync completed. Status: ${order.status}`);
-      } catch (lnbitsError) {
-        console.error(`[GET /api/orders/${orderId}] Error syncing with LNbits (non-fatal):`, lnbitsError);
-        // Continue with database order even if LNbits sync fails
-        // This is expected if the order was created locally or LNbits is unavailable
+        console.log(`[GET /api/orders/${orderId}] Payment check completed. Status: ${order.status}, Paid: ${paymentStatus.paid}`);
+      } catch (paymentError) {
+        // Log error but don't fail the request
+        // Payment might not be found yet (404) or LNbits might be unavailable
+        console.log(`[GET /api/orders/${orderId}] Payment status check failed (non-fatal):`, 
+          paymentError instanceof Error ? paymentError.message : 'Unknown error');
+        // Continue with database order status
       }
     }
 
@@ -155,19 +132,10 @@ export const PATCH = async (
       );
     }
 
-    // Update order in LNbits if paid or shipped status is being updated
-    if (body.paid !== undefined || body.shipped !== undefined) {
-      try {
-        const { updateOrder } = await import('@/lib/lnbits');
-        await updateOrder(orderId, {
-          paid: body.paid,
-          shipped: body.shipped,
-          message: body.message,
-        });
-      } catch (lnbitsError) {
-        console.error(`[PATCH /api/orders/${orderId}] Error updating order in LNbits (non-fatal):`, lnbitsError);
-      }
-    }
+    // Note: We don't update orders in NostrMarket because orders are created locally,
+    // not in NostrMarket. Orders exist only in our local database.
+    // If you need to update orders in NostrMarket in the future, you would need to
+    // create the order in NostrMarket first when creating the order locally.
 
     // Update order status in database
     if (body.paid === true && order.status === 'pending') {

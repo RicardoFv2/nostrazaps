@@ -13,7 +13,7 @@ export default function Features() {
       description: "Transacciones rápidas y con mínimas comisiones",
     },
     { title: "Confianza sin intermediarios", icon: "🤝", description: "Control total de tus transacciones" },
-    { title: "Ideal para comercio local", icon: "🛒", description: "Perfecto para entregas y comercio informal" },
+    { title: "Ideal para comercio local", icon: "🛒", description: "Perfecto para entregas y comercio P2P con TurboZaps" },
   ]
 
   return (

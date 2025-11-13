@@ -1,7 +1,7 @@
 
 ## ⚡ Proyecto
 **TurboZaps** es un MVP construido para un hackatón Lightning/Nostr/Web3.  
-Su objetivo es permitir que el comercio informal en El Salvador use **pagos con escrow Lightning Network** a través de **LNbits + extensión NostrMarket**.
+Su objetivo es permitir que el comercio local en El Salvador use **pagos con escrow Lightning Network** a través de **LNbits + extensión NostrMarket** con TurboZaps.
 
 El frontend (UI) fue creado con **v0.dev** en Next.js + TypeScript + TailwindCSS.  
 Este archivo contextualiza el entorno del backend que será generado con **Cursor**.

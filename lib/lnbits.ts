@@ -261,11 +261,16 @@ export const createOrder = async (data: OrderData): Promise<LNbitsOrderResponse>
 /**
  * Get order status from LNbits NostrMarket
  * GET /nostrmarket/api/v1/order/{order_id}
+ * 
+ * NOTE: This function is used for orders that exist in NostrMarket.
+ * For local orders created directly with invoices, use checkPaymentStatus() instead.
+ * 
  * @param orderId Order ID
  * @returns Order status and details including payment information
+ * @throws Error if order not found (404) or other API errors
  */
 export const getOrderStatus = async (orderId: string): Promise<LNbitsOrderResponse> => {
-  console.log('[getOrderStatus] Getting order status from LNbits:', orderId);
+  console.log('[getOrderStatus] Getting order status from LNbits NostrMarket:', orderId);
   
   try {
     if (!orderId) {
@@ -282,6 +287,13 @@ export const getOrderStatus = async (orderId: string): Promise<LNbitsOrderRespon
     
     return response;
   } catch (error) {
+    // Check if it's a 404 error (order not found)
+    if (error instanceof Error && error.message.includes('404')) {
+      // Log as info instead of error since this is expected for local orders
+      console.log('[getOrderStatus] Order not found in NostrMarket (expected for local orders):', orderId);
+      throw new Error(`Order not found in NostrMarket: ${orderId}. This is expected if the order was created locally.`);
+    }
+    
     console.error('[getOrderStatus] Error getting order status:', error);
     throw error;
   }
@@ -368,6 +380,145 @@ export const sendLightningPayment = async (data: {
     };
   } catch (error) {
     console.error('[sendLightningPayment] Error sending payment:', error);
+    
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error(
+        `Cannot connect to LNbits at ${LNBITS_URL}. ` +
+        'Please check: 1) LNbits is running, 2) URL is correct, 3) Network connection.'
+      );
+    }
+    
+    throw error;
+  }
+};
+
+/**
+ * Check payment status directly in LNbits using payment_hash
+ * Uses two methods:
+ * 1. GET /api/v1/payments/{payment_hash} - Direct lookup
+ * 2. GET /api/v1/payments - List payments and search (fallback)
+ * @param paymentHash Payment hash to check
+ * @returns Payment status with paid information
+ */
+export const checkPaymentStatus = async (paymentHash: string): Promise<{ paid: boolean; details?: unknown }> => {
+  console.log('[checkPaymentStatus] Checking payment status in LNbits:', paymentHash.substring(0, 16) + '...');
+
+  // Check if we're in demo mode
+  const isDemoMode = !LNBITS_URL || !LNBITS_API_KEY || LNBITS_URL === 'https://demo.lnbits.com';
+  
+  if (isDemoMode) {
+    console.warn('[checkPaymentStatus] DEMO MODE: Cannot check payment status (LNbits not configured)');
+    return { paid: false };
+  }
+
+  try {
+    if (!paymentHash) {
+      throw new Error('Payment hash is required');
+    }
+
+    // Method 1: Try direct lookup using payment_hash endpoint
+    const paymentUrl = `${LNBITS_URL}/api/v1/payments/${paymentHash}`;
+    
+    console.log('[checkPaymentStatus] Calling LNbits API (direct):', paymentUrl);
+    
+    let response = await fetch(paymentUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': LNBITS_API_KEY,
+      },
+    });
+
+    let result: unknown;
+    let isPaid = false;
+
+    // If direct lookup fails, try listing payments and searching
+    if (!response.ok && response.status === 404) {
+      console.log('[checkPaymentStatus] Direct lookup returned 404, trying payment list search...');
+      
+      // Method 2: List payments and search for our payment_hash
+      const paymentsListUrl = `${LNBITS_URL}/api/v1/payments?limit=100`;
+      response = await fetch(paymentsListUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': LNBITS_API_KEY,
+        },
+      });
+
+      if (!response.ok) {
+        console.log('[checkPaymentStatus] Payment list also failed, payment likely not paid yet');
+        return { paid: false };
+      }
+
+      const paymentsList = await response.json() as unknown[];
+      
+      // Search for payment with matching hash
+      const payment = paymentsList.find((p: unknown) => {
+        const pObj = p as { payment_hash?: string; checking_id?: string };
+        return pObj.payment_hash === paymentHash || pObj.checking_id === paymentHash;
+      });
+
+      if (!payment) {
+        console.log('[checkPaymentStatus] Payment not found in list, not paid yet');
+        return { paid: false };
+      }
+
+      result = payment;
+    } else if (!response.ok) {
+      const errorText = await response.text();
+      const errorMessage = `Failed to check payment status: ${response.status} - ${errorText}`;
+      console.error('[checkPaymentStatus]', errorMessage);
+      throw new Error(errorMessage);
+    } else {
+      result = await response.json();
+    }
+
+    // Parse payment status from result
+    // LNbits payment response structure:
+    // - For incoming payments (invoices): { paid: true/false, ... }
+    // - For outgoing payments: { paid: true/false, ... }
+    // - May have nested 'details' object
+    
+    const paymentObj = result as {
+      paid?: boolean | number;
+      status?: string;
+      details?: { paid?: boolean | number; status?: string };
+      payment_hash?: string;
+      checking_id?: string;
+      [key: string]: unknown;
+    };
+
+    // Check multiple possible indicators of paid status
+    isPaid = 
+      paymentObj.paid === true || 
+      paymentObj.paid === 1 || 
+      paymentObj.status === 'complete' || 
+      paymentObj.status === 'paid' ||
+      paymentObj.status === 'settled' ||
+      (paymentObj.details && (
+        paymentObj.details.paid === true ||
+        paymentObj.details.paid === 1 ||
+        paymentObj.details.status === 'complete' ||
+        paymentObj.details.status === 'paid' ||
+        paymentObj.details.status === 'settled'
+      ));
+
+    console.log('[checkPaymentStatus] Payment status result:', {
+      paid: isPaid,
+      paymentHash: paymentObj.payment_hash || paymentObj.checking_id,
+      status: paymentObj.status || paymentObj.details?.status,
+      hasDetails: !!paymentObj.details,
+      rawPaid: paymentObj.paid,
+      detailsPaid: paymentObj.details?.paid,
+    });
+    
+    return {
+      paid: isPaid,
+      details: result,
+    };
+  } catch (error) {
+    console.error('[checkPaymentStatus] Error checking payment status:', error);
     
     if (error instanceof TypeError && error.message.includes('fetch')) {
       throw new Error(
@@ -804,13 +955,27 @@ export const createCustomer = async (data: {
   };
 }): Promise<unknown> => {
   console.log('[createCustomer] Creating customer in LNbits');
+  console.log('[createCustomer] Keys format - public_key length:', data.public_key.length, 'merchant_id:', data.merchant_id);
   
   try {
     if (!data.merchant_id || !data.public_key) {
       throw new Error('Missing required fields: merchant_id and public_key are required');
     }
 
-    const response = await makeRequest('/customer', 'POST', data);
+    // Validate key format (should be 64 hex characters)
+    const hexRegex = /^[0-9a-f]{64}$/i;
+    if (!hexRegex.test(data.public_key)) {
+      throw new Error(`Invalid public_key format. Expected 64 hex characters, got: ${data.public_key.substring(0, 10)}... (length: ${data.public_key.length})`);
+    }
+
+    const payload = {
+      merchant_id: data.merchant_id,
+      public_key: data.public_key,
+      profile: data.profile || {},
+    };
+
+    console.log('[createCustomer] Sending payload with merchant_id:', payload.merchant_id);
+    const response = await makeRequest('/customer', 'POST', payload);
     console.log('[createCustomer] Customer created successfully');
     return response;
   } catch (error) {

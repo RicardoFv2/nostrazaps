@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,8 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
     image: null as File | null,
     stall_id: "",
   })
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Check if user is a merchant
   useEffect(() => {
@@ -85,6 +87,15 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
     loadStalls()
   }, [isMerchant])
 
+  // Clean up preview URL when component unmounts or image changes
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview)
+      }
+    }
+  }, [imagePreview])
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
@@ -92,7 +103,18 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
-      setFormData((prev) => ({ ...prev, image: e.target.files![0] }))
+      const file = e.target.files[0]
+      
+      // Clean up previous preview URL
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview)
+      }
+      
+      setFormData((prev) => ({ ...prev, image: file }))
+      
+      // Create new preview URL
+      const previewUrl = URL.createObjectURL(file)
+      setImagePreview(previewUrl)
     }
   }
 
@@ -101,12 +123,22 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
     setLoading(true)
 
     try {
-      // Convert image to base64 or upload to a service
+      // Convert image to base64 for persistent storage
       let imageUrl: string | null = null
       if (formData.image) {
-        // For now, we'll use a placeholder. In production, upload to a CDN/storage service
-        imageUrl = URL.createObjectURL(formData.image)
-        // Or convert to base64: const reader = new FileReader(); reader.readAsDataURL(formData.image); ...
+        // Convert file to base64
+        imageUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+              resolve(reader.result)
+            } else {
+              reject(new Error('Error al convertir la imagen'))
+            }
+          }
+          reader.onerror = () => reject(new Error('Error al leer la imagen'))
+          reader.readAsDataURL(formData.image!)
+        })
       }
 
       // Get stall_id from localStorage or form
@@ -141,8 +173,19 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
 
       console.log('[ProductForm] Product created successfully:', data.product)
       
+      // Clean up preview URL
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview)
+      }
+      
       alert("Producto publicado exitosamente!")
+      
+      // Reset form and file input
       setFormData({ name: "", description: "", price: "", quantity: "1", category: CATEGORIES[0], image: null, stall_id: "" })
+      setImagePreview(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
       
       // Callback para notificar que se creó el producto
       if (onProductCreated) {
@@ -267,11 +310,21 @@ export default function ProductForm({ onProductCreated }: ProductFormProps) {
       <div>
         <label className="block text-sm font-semibold text-foreground mb-2">Imagen del producto</label>
         <input
+          ref={fileInputRef}
           type="file"
           accept="image/*"
           onChange={handleFileChange}
           className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:opacity-90"
         />
+        {imagePreview && (
+          <div className="mt-4">
+            <img
+              src={imagePreview}
+              alt="Vista previa"
+              className="w-full h-48 object-cover rounded-md border border-border"
+            />
+          </div>
+        )}
       </div>
 
       <Button type="submit" disabled={loading} className="w-full h-12">

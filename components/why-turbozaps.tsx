@@ -8,7 +8,7 @@ export default function WhyTurboZaps() {
 
         <div className="bg-gradient-to-br from-primary/5 to-secondary/5 rounded-2xl border border-primary/20 p-8 md:p-12">
           <p className="text-lg text-foreground/80 leading-relaxed mb-6">
-            El comercio informal en El Salvador suele usar "pago contra entrega" por falta de confianza. Los vendedores
+            El comercio local en El Salvador suele usar "pago contra entrega" por falta de confianza. Los vendedores
             tienen miedo de no recibir el dinero, y los compradores tienen miedo de ser estafados.
           </p>
 

@@ -123,6 +123,13 @@ pnpm install
 npm install
 ```
 
+> **📦 Para usuarios de NixOS:** Si estás usando NixOS, puedes usar el entorno de desarrollo proporcionado:
+> ```bash
+> nix-shell
+> npm install
+> ```
+> El archivo `shell.nix` incluye Node.js 24, npm y pnpm. Si encuentras conflictos de dependencias, usa `npm install --legacy-peer-deps`.
+
 ### 3. Configura variables de entorno
 
 Crea un archivo `.env.local` en la raíz del proyecto:

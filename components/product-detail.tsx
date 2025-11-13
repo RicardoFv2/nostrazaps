@@ -296,8 +296,8 @@ export default function ProductDetail({ product }: ProductDetailProps) {
           isOpen={showReleaseModal}
           onClose={() => setShowReleaseModal(false)}
           onSubmit={handleReleasePayment}
-          title="Liberar Fondos al Vendedor"
-          description="Para liberar los fondos en escrow, el vendedor debe generar un invoice Lightning donde quiere recibir el pago."
+          title="Liberar Fondos del Escrow al Vendedor"
+          description="Los fondos están actualmente retenidos en la wallet del sistema TurboZaps (en escrow). Para liberarlos, el vendedor debe generar un invoice Lightning en su wallet donde quiere recibir el pago. Una vez que ingreses el invoice, el sistema enviará los fondos desde la wallet de escrow al vendedor."
           amount={product.price}
           isRefund={false}
         />
@@ -362,6 +362,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
         onOpenChange={setShowPaymentModal}
         invoice={invoice}
         amount={product.price}
+        orderId={orderId}
         onPaymentConfirm={handlePaymentConfirm}
       />
     </div>

@@ -122,3 +122,52 @@ export function ensureValidNostrPubkey(
 
   return null
 }
+
+/**
+ * Lightning Invoice Utilities
+ * Helper functions to validate Lightning Network invoices (BOLT11)
+ */
+
+/**
+ * Validates if a string is a valid Lightning invoice (BOLT11 format)
+ * Supports all Lightning Network types: mainnet, testnet, regtest, signet
+ * @param invoice Invoice string to validate
+ * @returns true if valid, false otherwise
+ */
+export function isValidLightningInvoice(invoice: string): boolean {
+  if (!invoice || typeof invoice !== 'string') {
+    return false
+  }
+
+  const invoiceLower = invoice.toLowerCase().trim()
+  
+  // Valid BOLT11 prefixes:
+  // - lnbc: Mainnet
+  // - lntb: Testnet
+  // - lnbcrt: Regtest
+  // - lnbcs: Signet
+  const validPrefixes = ['lnbc', 'lntb', 'lnbcrt', 'lnbcs']
+  
+  return validPrefixes.some(prefix => invoiceLower.startsWith(prefix))
+}
+
+/**
+ * Gets the network type from a Lightning invoice
+ * @param invoice Invoice string
+ * @returns Network type ('mainnet' | 'testnet' | 'regtest' | 'signet' | null)
+ */
+export function getLightningInvoiceNetwork(invoice: string): 'mainnet' | 'testnet' | 'regtest' | 'signet' | null {
+  if (!invoice || typeof invoice !== 'string') {
+    return null
+  }
+
+  const invoiceLower = invoice.toLowerCase().trim()
+  
+  // Check in order of specificity (longer prefixes first)
+  if (invoiceLower.startsWith('lnbcrt')) return 'regtest'
+  if (invoiceLower.startsWith('lnbcs')) return 'signet'
+  if (invoiceLower.startsWith('lntb')) return 'testnet'
+  if (invoiceLower.startsWith('lnbc')) return 'mainnet'
+  
+  return null
+}

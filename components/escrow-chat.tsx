@@ -288,8 +288,16 @@ export function EscrowChat({
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
           <div className="text-sm text-yellow-800 dark:text-yellow-200">
-            <p className="font-semibold mb-1">🟡 Pago en escrow (asegurado)</p>
-            <p>Tu dinero está seguro. Una vez que confirmes la entrega, el vendedor lo recibirá.</p>
+            <p className="font-semibold mb-1">🟡 Fondos en Escrow (Retenidos en Wallet del Sistema)</p>
+            <p className="mb-2">
+              Los fondos están <strong>físicamente retenidos</strong> en la wallet del sistema TurboZaps. 
+              NO se han enviado al vendedor todavía.
+            </p>
+            <p>
+              {isBuyer 
+                ? "Una vez que confirmes la entrega del producto, los fondos se enviarán al vendedor automáticamente."
+                : "El comprador debe confirmar la entrega para que recibas el pago."}
+            </p>
           </div>
         </div>
       </div>

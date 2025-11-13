@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { generateSecretKey, getPublicKey } from "nostr-tools"
 import Navbar from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,24 +25,31 @@ export default function RegisterMerchantPage() {
   }
 
   const generateNostrKeys = () => {
-    // Generate valid Nostr keys in hexadecimal format (64 chars each)
-    // LNbits NostrMarket expects hex format, not bech32 (nsec/npub)
+    // Generate valid Nostr keys using nostr-tools
+    // This generates a real private key and derives the corresponding public key
+    // Both keys are in hexadecimal format (64 characters) as expected by LNbits NostrMarket
     
-    // Generate 32 random bytes = 64 hex characters
-    const generateHexKey = () => {
-      const array = new Uint8Array(32)
-      crypto.getRandomValues(array)
-      return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('')
+    try {
+      // Generate a valid Nostr secret key (returns Uint8Array of 32 bytes)
+      const secretKey = generateSecretKey()
+      
+      // Convert secret key to hex string (64 characters)
+      const privateKey = Array.from(secretKey, byte => 
+        byte.toString(16).padStart(2, '0')
+      ).join('')
+      
+      // Derive the public key from the secret key (returns hex string, 64 characters)
+      const publicKey = getPublicKey(secretKey)
+      
+      setFormData((prev) => ({
+        ...prev,
+        private_key: privateKey,
+        public_key: publicKey,
+      }))
+    } catch (error) {
+      console.error('Error generating Nostr keys:', error)
+      alert('Error al generar las claves Nostr. Por favor intenta nuevamente.')
     }
-    
-    const privateKey = generateHexKey()
-    const publicKey = generateHexKey()
-    
-    setFormData((prev) => ({
-      ...prev,
-      private_key: privateKey,
-      public_key: publicKey,
-    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

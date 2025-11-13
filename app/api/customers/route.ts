@@ -61,13 +61,41 @@ export const POST = async (request: NextRequest) => {
     });
   } catch (error) {
     console.error('[POST /api/customers] Error creating customer:', error);
+    
+    // Extra debug info if LNbits returns text instead of JSON
+    const message = error instanceof Error ? error.message : JSON.stringify(error, null, 2);
+    
+    // Provide more specific error messages
+    let statusCode = 500;
+    let errorMessage = 'Failed to create customer';
+    
+    if (message.includes('Invalid public_key format')) {
+      statusCode = 400;
+      errorMessage = 'Invalid public key format. Expected 64-character hexadecimal string.';
+    } else if (message.includes('Missing required fields')) {
+      statusCode = 400;
+      errorMessage = message;
+    } else if (message.includes('401') || message.includes('authentication')) {
+      statusCode = 401;
+      errorMessage = 'LNbits API authentication failed. Check your LNBITS_API_KEY.';
+    } else if (message.includes('404') || message.includes('not found')) {
+      statusCode = 404;
+      errorMessage = 'LNbits API endpoint not found. Verify NostrMarket extension is installed.';
+    } else if (message.includes('403') || message.includes('forbidden')) {
+      statusCode = 403;
+      errorMessage = 'LNbits API access forbidden. Check your API key permissions.';
+    }
+    
     return NextResponse.json(
       {
         ok: false,
-        error: 'Failed to create customer',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
+        message,
+        hint: statusCode === 500 
+          ? 'Verify LNBITS_URL points to an instance with NostrMarket enabled (e.g. https://demo.lnbits.com)' 
+          : undefined,
       },
-      { status: 500 }
+      { status: statusCode }
     );
   }
 };

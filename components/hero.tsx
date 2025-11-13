@@ -18,9 +18,9 @@ export default function Hero() {
         </div>
 
         <h1 className="text-5xl md:text-7xl font-bold text-foreground mb-6 text-balance leading-tight">
-          Comercio informal,
+          TurboZaps,
           <span className="block bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-            ahora con confianza ⚡
+            comercio local con confianza ⚡
           </span>
         </h1>
 
