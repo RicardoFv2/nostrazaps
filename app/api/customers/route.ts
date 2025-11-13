@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createCustomer, getCustomers } from '@/lib/lnbits';
+import { dbHelpers } from '@/lib/db';
 import type { CreateCustomerRequest } from '@/types';
 
 // GET /api/customers - Get customers
@@ -51,6 +52,29 @@ export const POST = async (request: NextRequest) => {
       public_key: body.public_key,
       profile: body.profile,
     });
+
+    // Save buyer to local database
+    try {
+      const customerId = (customer as { id?: string })?.id || null;
+      const buyerName = body.profile?.name || 'Buyer';
+      
+      dbHelpers.createBuyer({
+        public_key: body.public_key,
+        name: buyerName,
+        merchant_id: body.merchant_id,
+        customer_id: customerId,
+      });
+      
+      console.log('[POST /api/customers] Buyer saved to local database');
+    } catch (dbError) {
+      // Log error but don't fail the request if buyer already exists
+      if (dbError instanceof Error && dbError.message.includes('UNIQUE constraint')) {
+        console.log('[POST /api/customers] Buyer already exists in local database, skipping');
+      } else {
+        console.error('[POST /api/customers] Error saving buyer to local database:', dbError);
+        // Continue anyway - LNbits customer was created successfully
+      }
+    }
 
     console.log('[POST /api/customers] Customer created successfully');
 

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { LightningPaymentModal } from "@/components/lightning-payment-modal"
@@ -24,6 +25,7 @@ interface ProductDetailProps {
 type EscrowStatus = "pending" | "paid" | "released" | "cancelled"
 
 export default function ProductDetail({ product }: ProductDetailProps) {
+  const router = useRouter()
   const [escrowStatus, setEscrowStatus] = useState<EscrowStatus>("pending")
   const [purchasing, setPurchasing] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -86,6 +88,14 @@ export default function ProductDetail({ product }: ProductDetailProps) {
 
       const data = await response.json()
 
+      // Check if buyer role is missing (403 status)
+      if (!response.ok && response.status === 403 && data.error?.includes('Buyer role not found')) {
+        // Redirect to buyer registration page
+        alert('Necesitas crear un perfil de comprador antes de realizar una compra. Serás redirigido a la página de registro.')
+        router.push('/register/buyer')
+        return
+      }
+
       if (!data.ok) {
         throw new Error(data.error || 'Error al crear la orden')
       }
@@ -102,7 +112,10 @@ export default function ProductDetail({ product }: ProductDetailProps) {
       }
     } catch (error) {
       console.error("Error creating order:", error)
-      alert(error instanceof Error ? error.message : "Error al procesar la compra")
+      // Only show alert if it's not a buyer role error (already handled above)
+      if (!(error instanceof Error && error.message.includes('Buyer role not found'))) {
+        alert(error instanceof Error ? error.message : "Error al procesar la compra")
+      }
     } finally {
       setPurchasing(false)
     }

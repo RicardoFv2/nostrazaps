@@ -70,11 +70,20 @@ const getDb = (): Database.Database => {
           FOREIGN KEY (order_id) REFERENCES orders(id)
         );
 
+        CREATE TABLE IF NOT EXISTS buyers (
+          public_key TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          merchant_id TEXT NOT NULL,
+          customer_id TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE INDEX IF NOT EXISTS idx_orders_product_id ON orders(product_id);
         CREATE INDEX IF NOT EXISTS idx_orders_buyer_pubkey ON orders(buyer_pubkey);
         CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
         CREATE INDEX IF NOT EXISTS idx_messages_order_id ON messages(order_id);
         CREATE INDEX IF NOT EXISTS idx_products_stall_id ON products(stall_id);
+        CREATE INDEX IF NOT EXISTS idx_buyers_public_key ON buyers(public_key);
       `);
     }
   }
@@ -245,5 +254,23 @@ export const dbHelpers = {
     return db
       .prepare('INSERT INTO messages (id, order_id, sender, receiver, content) VALUES (?, ?, ?, ?, ?)')
       .run(message.id, message.order_id, message.sender, message.receiver, message.content);
+  },
+
+  // Buyers
+  getBuyerByPubkey: (publicKey: string) => {
+    const db = getDb();
+    return db.prepare('SELECT * FROM buyers WHERE public_key = ?').get(publicKey);
+  },
+
+  createBuyer: (buyer: {
+    public_key: string;
+    name: string;
+    merchant_id: string;
+    customer_id?: string | null;
+  }) => {
+    const db = getDb();
+    return db
+      .prepare('INSERT INTO buyers (public_key, name, merchant_id, customer_id) VALUES (?, ?, ?, ?)')
+      .run(buyer.public_key, buyer.name, buyer.merchant_id, buyer.customer_id || null);
   },
 };

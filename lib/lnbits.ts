@@ -1002,6 +1002,45 @@ export const getCustomers = async (): Promise<unknown> => {
   }
 };
 
+/**
+ * Get customer by public key
+ * GET /nostrmarket/api/v1/customer (filters locally by public_key)
+ * @param publicKey Customer's public key
+ * @returns Customer object if found, null otherwise
+ */
+export const getCustomerByPubkey = async (publicKey: string): Promise<unknown | null> => {
+  console.log('[getCustomerByPubkey] Getting customer by public key from LNbits:', publicKey.substring(0, 20) + '...');
+  
+  try {
+    if (!publicKey) {
+      throw new Error('Public key is required');
+    }
+
+    // Get all customers from LNbits
+    const customers = await getCustomers();
+    
+    // Handle both array and single object responses
+    const customersList = Array.isArray(customers) ? customers : [customers];
+    
+    // Find customer with matching public_key
+    const customer = customersList.find((c: unknown) => {
+      const customerObj = c as { public_key?: string };
+      return customerObj.public_key?.toLowerCase() === publicKey.toLowerCase();
+    });
+
+    if (customer) {
+      console.log('[getCustomerByPubkey] Customer found in LNbits');
+      return customer;
+    } else {
+      console.log('[getCustomerByPubkey] Customer not found in LNbits');
+      return null;
+    }
+  } catch (error) {
+    console.error('[getCustomerByPubkey] Error getting customer by public key:', error);
+    throw error;
+  }
+};
+
 // ==================== ORDER UPDATES ====================
 
 /**

@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { dbHelpers } from '@/lib/db';
-import { createLightningInvoice, getMerchant } from '@/lib/lnbits';
+import { createLightningInvoice, getMerchant, getCustomerByPubkey } from '@/lib/lnbits';
 import { ensureValidNostrPubkey } from '@/lib/utils';
 import type { CreateOrderRequest, CreateOrderResponse, Order } from '@/types';
 import { randomUUID } from 'crypto';
@@ -85,6 +85,39 @@ export const POST = async (request: NextRequest) => {
           error: 'Missing required fields: product_id and buyer_pubkey are required',
         },
         { status: 400 }
+      );
+    }
+
+    // Verify buyer has a role (is registered as a buyer in LNbits)
+    try {
+      const customer = await getCustomerByPubkey(body.buyer_pubkey);
+      if (!customer) {
+        console.error('[POST /api/orders] Buyer not found in LNbits:', body.buyer_pubkey.substring(0, 20) + '...');
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'Buyer role not found. Please register as a buyer before creating an order.',
+            hint: 'Visit /register/buyer to create your buyer profile',
+          },
+          { status: 403 }
+        );
+      }
+
+      const customerObj = customer as { public_key?: string; profile?: { name?: string } };
+      console.log('[POST /api/orders] Buyer verified in LNbits:', {
+        public_key: body.buyer_pubkey.substring(0, 20) + '...',
+        name: customerObj.profile?.name || 'Unknown',
+      });
+    } catch (lnbitsError) {
+      console.error('[POST /api/orders] Error verifying buyer in LNbits:', lnbitsError);
+      // If LNbits is unavailable, we can't verify the buyer - reject the order
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Unable to verify buyer role. LNbits service may be unavailable.',
+          message: lnbitsError instanceof Error ? lnbitsError.message : 'Unknown error',
+        },
+        { status: 503 }
       );
     }
 
